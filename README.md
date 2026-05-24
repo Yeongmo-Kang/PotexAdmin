@@ -43,6 +43,7 @@ If someone is new to this project, read in this order:
 ## Authoritative Docs
 - Primary canonical location for docs/code: GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`)
 - Local workspace copy under `/home/ubuntu/.hermes/projects/PotexAdmin` is for implementation, inspection, and backup
+- Repo resilience / restore playbook: `docs/repo-resilience.md`
 - Database overview: `docs/database-overview.md`
 - Sheet-by-sheet reference: `docs/sheet-reference.md`
 - Operator manual: `OPERATIONS_MANUAL.md`

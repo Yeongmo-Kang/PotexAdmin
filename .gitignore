@@ -2,8 +2,11 @@ potex-gas/node_modules/
 potex-gas/.clasprc.json
 potex-gas/creds.reconstructed.json
 potex-gas/dist/
+potex-gas/scripts/login-project-scopes.sh
 **/__pycache__/
 *.pyc
 pycache/
 generated/*script_properties*.json
+generated/post_refresh_state.json
+.gemini/
 .obsidian/workspace.json
