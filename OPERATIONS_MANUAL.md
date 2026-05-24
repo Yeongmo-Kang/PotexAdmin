@@ -45,6 +45,7 @@ CS 担当者が主に確認する workbook
 - `CS_継続対象一覧`
 - `CS_例外確認`
 - `CS_別名解決入力`
+- `CS_承認診断`
 - `CS_承認進捗`
 - `CS_入金名寄せ確認`
 - `CS_継続名寄せ確認`
@@ -132,15 +133,38 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - このシートでシステムが実際に反映する状態値は `approved` / `active` / `resolved` 系のみです。
 - 判断を保留するときは status を無理に入れず、空欄のままにします。
 
-### `CS_承認進捗`
+### `CS_承認診断`
 何を見るか:
-- `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の **現在の open queue** と、直近 7 日の writeback 処理量を 1 か所にまとめた運用モニタリングタブ
-- `open_p1`、`p1_undecided`、`decided_waiting_sync`、`invalid_open` により、どこが実際のボトルネックかを素早く確認する
+- `CS_入金名寄せ確認` / `CS_継続名寄せ確認` を **いま誰が動かすべきか** を 1 行で判定したタブ
+- `queue_status`、`primary_bottleneck`、`next_action_owner`、`recommended_next_action` により、
+  - 人が今すぐ判断すべきか
+  - 入力修正が必要か
+  - 次回 writeback 待ちか
+  - writeback 自体が stale で点検が必要か
+  を最短で切り分ける
 
 運用担当者が行うこと:
+- 最初にこのタブを見る
+- `queue_status=要修正` なら review タブで invalid 行を修正する
+- `queue_status=P1優先処理` なら該当 review タブで P1 を先に判断する
+- `queue_status=同期待ち` なら review タブを触り直さず、次回 writeback まで待つ
+- `queue_status=要点検` なら `POTEX DB > Sync_Log` の `runWritebackCollection` 最新成功を確認し、自動化担当へ連携する
+- `queue_status=候補/取込待ち` なら status は空欄のまま note を残し、次回 ingest / 顧客調査を待つ
+
+### `CS_承認進捗`
+何を見るか:
+- `CS_承認診断` の判断根拠になっている件数・時刻・throughput の詳細
+- `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の **現在の open queue** と、直近 7 日の writeback 処理量を 1 か所にまとめた運用モニタリングタブ
+- `open_p1`、`p1_undecided`、`decided_waiting_sync`、`invalid_open`、`source_wait_open`、`last_writeback_age` により、どこが実際のボトルネックかを素早く確認する
+
+運用担当者が行うこと:
+- `CS_承認診断` で `recommended_next_action` を確認してから、このタブで件数と時刻の裏取りをする
 - `open_p1` と `p1_undecided` が多いものから優先して処理する
-- `decided_waiting_sync` が溜まっている場合は、writeback cadence / 実行異常を確認する
+- `decided_waiting_sync` が溜まっている場合は、`last_writeback_age` を見て
+  - cadence 内なら待機
+  - cadence から大きく外れていれば writeback 実行異常を確認する
 - `invalid_open` が増えた場合は、該当 review タブで operator 入力ミスを先に修正する
+- `source_wait_open` が多い場合は、P2 / P3 を無理に承認せず note のみ残して次回取込や顧客調査を待つ
 - `processed_last_7d` が 0 に近く、open queue が減らない場合は、運用ルーティンが実際に回っているか確認する
 
 ### `CS_入金名寄せ確認`

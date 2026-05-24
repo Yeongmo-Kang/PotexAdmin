@@ -5,6 +5,7 @@ export {
   buildCsAliasResolutionInput,
   buildCsPaymentAliasReview,
   buildCsContinuationAliasReview,
+  buildCsApprovalDiagnosis,
   buildCsApprovalProgress,
   buildCsAssignmentInput,
   resolveContinuationCeId,

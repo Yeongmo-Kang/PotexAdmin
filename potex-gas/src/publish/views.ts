@@ -788,7 +788,7 @@ export function buildCsReadme(): Array<Array<string>> {
   return [
     ['section', 'content'],
     ['purpose', 'CS日次運用ブックです。今日どの案件を先に触るか、どこに入力するか、どの alias / 担当割当を処理するかをここで判断します。'],
-    ['read_first', '最初に CS_承認進捗 で滞留箇所を確認し、その後 CS_要フォロー一覧 → alias review 2種 → CS_担当割当入力 → CS_継続対象一覧 の順で見てください。'],
+    ['read_first', '最初に CS_承認診断 で「人が今やること / システム待ち / 要点検」を判定し、次に CS_承認進捗 で件数を確認します。その後 CS_要フォロー一覧 → alias review 2種 → CS_担当割当入力 → CS_継続対象一覧 の順で見てください。'],
     ['edit_here', '編集してよいのは入力・レビュー系タブの指定列だけです。とくに operator_decision_status / operator_selected_* / operator_note 以外は原則編集しないでください。'],
     ['do_not_edit', '参照用の公開列、候補列、ID列、sync_status、最終取込日時は手で書き換えないでください。'],
     ['status_rule', 'operator_decision_status は原則 approved / active / resolved を使います。シート内に個別案内がある場合はその案内を優先してください。'],
@@ -884,19 +884,67 @@ type ApprovalProgressSnapshot = {
   undecidedP1: number;
   decidedAwaitingSync: number;
   invalidOpen: number;
+  sourceWaitOpen: number;
+  oldestOpenAtJst: string;
+  oldestP1UndecidedAtJst: string;
+  oldestDecidedAwaitingSyncAtJst: string;
 };
 
+function selectEarlierTimestamp(current: string, candidate: string): string {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  const currentDate = new Date(current);
+  const candidateDate = new Date(candidate);
+  const currentMs = currentDate.getTime();
+  const candidateMs = candidateDate.getTime();
+  if (Number.isNaN(currentMs)) return candidate;
+  if (Number.isNaN(candidateMs)) return current;
+  return candidateMs < currentMs ? candidate : current;
+}
+
+function formatTimestampIfPresentJst(timestamp: string): string {
+  const text = String(timestamp || '').trim();
+  if (!text) return '';
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return text;
+  return formatTrendTimestampJst(parsed);
+}
+
+function ageHoursSince(timestamp: string, now: Date): number | null {
+  const text = String(timestamp || '').trim();
+  if (!text) return null;
+  const parsed = new Date(text);
+  const timestampMs = parsed.getTime();
+  if (Number.isNaN(timestampMs)) return null;
+  return Math.max(0, (now.getTime() - timestampMs) / (60 * 60 * 1000));
+}
+
+function formatAgeHoursLabel(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '';
+  if (value < 24) return `${Math.round(value)}h`;
+  return `${(value / 24).toFixed(1)}d`;
+}
+
 function summarizeApprovalQueue(rows: Array<Record<string, string>>): ApprovalProgressSnapshot {
-  return rows.reduce<ApprovalProgressSnapshot>((acc, row) => {
+  const snapshot = rows.reduce<ApprovalProgressSnapshot>((acc, row) => {
     const priority = String(row['priority'] || '');
     const decision = normalizeLower(row['operator_decision_status'] || '');
     const syncStatus = normalizeLower(row['sync_status'] || '');
+    const lastCollectedAt = row['last_collected_at'] || '';
     acc.openTotal += 1;
+    acc.oldestOpenAtJst = formatTimestampIfPresentJst(selectEarlierTimestamp(acc.oldestOpenAtJst, lastCollectedAt));
     if (priority === 'P1') acc.openP1 += 1;
     if (priority === 'P2') acc.openP2 += 1;
     if (priority === 'P3') acc.openP3 += 1;
-    if (priority === 'P1' && !decision) acc.undecidedP1 += 1;
-    if (decision && syncStatus !== 'processed') acc.decidedAwaitingSync += 1;
+    if ((priority === 'P2' || priority === 'P3') && !decision) acc.sourceWaitOpen += 1;
+    if (priority === 'P1' && !decision) {
+      acc.undecidedP1 += 1;
+      acc.oldestP1UndecidedAtJst = formatTimestampIfPresentJst(selectEarlierTimestamp(acc.oldestP1UndecidedAtJst, lastCollectedAt));
+    }
+    if (decision && syncStatus !== 'processed') {
+      acc.decidedAwaitingSync += 1;
+      acc.oldestDecidedAwaitingSyncAtJst = formatTimestampIfPresentJst(selectEarlierTimestamp(acc.oldestDecidedAwaitingSyncAtJst, lastCollectedAt));
+    }
     if (syncStatus && syncStatus !== 'processed') acc.invalidOpen += (syncStatus.includes('invalid') ? 1 : 0);
     return acc;
   }, {
@@ -907,13 +955,23 @@ function summarizeApprovalQueue(rows: Array<Record<string, string>>): ApprovalPr
     undecidedP1: 0,
     decidedAwaitingSync: 0,
     invalidOpen: 0,
+    sourceWaitOpen: 0,
+    oldestOpenAtJst: '',
+    oldestP1UndecidedAtJst: '',
+    oldestDecidedAwaitingSyncAtJst: '',
   });
+
+  snapshot.oldestOpenAtJst = formatTimestampIfPresentJst(snapshot.oldestOpenAtJst);
+  snapshot.oldestP1UndecidedAtJst = formatTimestampIfPresentJst(snapshot.oldestP1UndecidedAtJst);
+  snapshot.oldestDecidedAwaitingSyncAtJst = formatTimestampIfPresentJst(snapshot.oldestDecidedAwaitingSyncAtJst);
+  return snapshot;
 }
 
 type ApprovalWritebackSummary = {
   processed7d: number;
   invalid7d: number;
   lastSuccessAtJst: string;
+  lastSuccessAgeHours: number | null;
 };
 
 function summarizeWritebackThroughput(
@@ -949,7 +1007,122 @@ function summarizeWritebackThroughput(
     }
   });
 
-  return { processed7d, invalid7d, lastSuccessAtJst };
+  const lastSuccessAgeHours = lastSuccessAtMs > 0
+    ? Math.max(0, (Date.now() - lastSuccessAtMs) / (60 * 60 * 1000))
+    : null;
+  return { processed7d, invalid7d, lastSuccessAtJst, lastSuccessAgeHours };
+}
+
+type ApprovalQueueDiagnosis = {
+  queueStatus: string;
+  primaryBottleneck: string;
+  nextActionOwner: string;
+  recommendedNextAction: string;
+  writebackFreshness: string;
+  oldestOpenAge: string;
+  oldestSyncWaitAge: string;
+};
+
+function diagnoseApprovalQueue(
+  scopeLabel: string,
+  snapshot: ApprovalProgressSnapshot,
+  throughput: ApprovalWritebackSummary,
+): ApprovalQueueDiagnosis {
+  const now = new Date();
+  const writebackStale = throughput.lastSuccessAgeHours === null || throughput.lastSuccessAgeHours > 2;
+  const oldestOpenAge = formatAgeHoursLabel(ageHoursSince(snapshot.oldestOpenAtJst, now));
+  const oldestSyncWaitAge = formatAgeHoursLabel(ageHoursSince(snapshot.oldestDecidedAwaitingSyncAtJst, now));
+  const writebackFreshness = writebackStale ? 'writeback stale' : 'writeback recent';
+
+  if (snapshot.invalidOpen > 0) {
+    return {
+      queueStatus: '要修正',
+      primaryBottleneck: 'invalid_open が残っており入力修正が必要',
+      nextActionOwner: 'operator',
+      recommendedNextAction: `${scopeLabel} review タブで invalid_open 行の operator 入力を修正する`,
+      writebackFreshness,
+      oldestOpenAge,
+      oldestSyncWaitAge,
+    };
+  }
+  if (snapshot.undecidedP1 > 0) {
+    return {
+      queueStatus: 'P1優先処理',
+      primaryBottleneck: 'P1 が未判断のまま残っている',
+      nextActionOwner: 'operator',
+      recommendedNextAction: `${scopeLabel} review タブで P1 の文脈確認 → approved か保留メモを入れる`,
+      writebackFreshness,
+      oldestOpenAge,
+      oldestSyncWaitAge,
+    };
+  }
+  if (snapshot.decidedAwaitingSync > 0) {
+    return {
+      queueStatus: writebackStale ? '要点検' : '同期待ち',
+      primaryBottleneck: writebackStale
+        ? '運営判断済みだが writeback 成功が古く自動反映停滞の疑い'
+        : '運営判断済みで次回 writeback 反映待ち',
+      nextActionOwner: writebackStale ? 'automation' : 'system',
+      recommendedNextAction: writebackStale
+        ? 'POTEX DB の Sync_Log で runWritebackCollection の最新成功を確認し、自動化担当へ連携する'
+        : '次回 writeback cadence まで待ち、未反映が続く場合だけ Sync_Log を確認する',
+      writebackFreshness,
+      oldestOpenAge,
+      oldestSyncWaitAge,
+    };
+  }
+  if (snapshot.sourceWaitOpen > 0) {
+    return {
+      queueStatus: '候補/取込待ち',
+      primaryBottleneck: 'P2/P3 が中心で有力候補または顧客取込待ち',
+      nextActionOwner: 'source',
+      recommendedNextAction: 'status は空欄のまま note を残し、次回 ingest または顧客調査を待つ',
+      writebackFreshness,
+      oldestOpenAge,
+      oldestSyncWaitAge,
+    };
+  }
+  if (snapshot.openTotal > 0) {
+    return {
+      queueStatus: '通常確認',
+      primaryBottleneck: 'open 件はあるが緊急滞留シグナルは小さい',
+      nextActionOwner: 'operator',
+      recommendedNextAction: '通常運用順で review タブを確認する',
+      writebackFreshness,
+      oldestOpenAge,
+      oldestSyncWaitAge,
+    };
+  }
+  return {
+    queueStatus: '滞留なし',
+    primaryBottleneck: 'open queue なし',
+    nextActionOwner: 'none',
+    recommendedNextAction: '追加対応不要',
+    writebackFreshness,
+    oldestOpenAge,
+    oldestSyncWaitAge,
+  };
+}
+
+export function buildCsApprovalDiagnosis(
+  paymentAliasReviewTable: Array<Array<string>>,
+  continuationAliasReviewTable: Array<Array<string>>,
+  syncLogRows: Array<Record<string, string>>,
+): Array<Array<string>> {
+  const paymentRows = tableToObjects(paymentAliasReviewTable);
+  const continuationRows = tableToObjects(continuationAliasReviewTable);
+  const paymentSnapshot = summarizeApprovalQueue(paymentRows);
+  const continuationSnapshot = summarizeApprovalQueue(continuationRows);
+  const paymentThroughput = summarizeWritebackThroughput(syncLogRows, 'processedPaymentAliasRows', 'invalidPaymentAliasRows');
+  const continuationThroughput = summarizeWritebackThroughput(syncLogRows, 'processedContinuationAliasRows', 'invalidContinuationAliasRows');
+  const paymentDiagnosis = diagnoseApprovalQueue('入金', paymentSnapshot, paymentThroughput);
+  const continuationDiagnosis = diagnoseApprovalQueue('継続', continuationSnapshot, continuationThroughput);
+
+  return [
+    ['scope', 'queue_status', 'primary_bottleneck', 'next_action_owner', 'recommended_next_action', 'open_total', 'open_p1', 'p1_undecided', 'decided_waiting_sync', 'invalid_open', 'source_wait_open', 'oldest_open_age', 'oldest_sync_wait_age', 'last_writeback_success_at_jst', 'writeback_freshness'],
+    ['payment_alias_review', paymentDiagnosis.queueStatus, paymentDiagnosis.primaryBottleneck, paymentDiagnosis.nextActionOwner, paymentDiagnosis.recommendedNextAction, String(paymentSnapshot.openTotal), String(paymentSnapshot.openP1), String(paymentSnapshot.undecidedP1), String(paymentSnapshot.decidedAwaitingSync), String(paymentSnapshot.invalidOpen), String(paymentSnapshot.sourceWaitOpen), paymentDiagnosis.oldestOpenAge, paymentDiagnosis.oldestSyncWaitAge, paymentThroughput.lastSuccessAtJst, paymentDiagnosis.writebackFreshness],
+    ['continuation_alias_review', continuationDiagnosis.queueStatus, continuationDiagnosis.primaryBottleneck, continuationDiagnosis.nextActionOwner, continuationDiagnosis.recommendedNextAction, String(continuationSnapshot.openTotal), String(continuationSnapshot.openP1), String(continuationSnapshot.undecidedP1), String(continuationSnapshot.decidedAwaitingSync), String(continuationSnapshot.invalidOpen), String(continuationSnapshot.sourceWaitOpen), continuationDiagnosis.oldestOpenAge, continuationDiagnosis.oldestSyncWaitAge, continuationThroughput.lastSuccessAtJst, continuationDiagnosis.writebackFreshness],
+  ];
 }
 
 export function buildCsApprovalProgress(
@@ -965,6 +1138,8 @@ export function buildCsApprovalProgress(
   const paymentThroughput = summarizeWritebackThroughput(syncLogRows, 'processedPaymentAliasRows', 'invalidPaymentAliasRows');
   const continuationThroughput = summarizeWritebackThroughput(syncLogRows, 'processedContinuationAliasRows', 'invalidContinuationAliasRows');
   const partnerThroughput = summarizeWritebackThroughput(syncLogRows, 'processedPartnerStatusRows', 'invalidPartnerStatusRows');
+  const paymentDiagnosis = diagnoseApprovalQueue('入金', paymentSnapshot, paymentThroughput);
+  const continuationDiagnosis = diagnoseApprovalQueue('継続', continuationSnapshot, continuationThroughput);
   const partnerAssignments = assignmentRows.filter((row) => (row['assignee_kind'] || '').toLowerCase() === 'partner' && !(row['ended_at'] || '') && (row['assignment_status'] || '').toLowerCase() !== 'ended');
   const now = new Date();
   const partnerStaleCount = partnerAssignments.filter((row) => {
@@ -977,6 +1152,10 @@ export function buildCsApprovalProgress(
 
   return [
     ['scope', 'metric', 'value', 'note'],
+    ['payment_alias_review', 'queue_status', paymentDiagnosis.queueStatus, 'operator が最初に見るべき現在の状態です。'],
+    ['payment_alias_review', 'primary_bottleneck', paymentDiagnosis.primaryBottleneck, 'いま queue を詰まらせている主因です。'],
+    ['payment_alias_review', 'next_action_owner', paymentDiagnosis.nextActionOwner, '次の一手を持つ主体です。'],
+    ['payment_alias_review', 'recommended_next_action', paymentDiagnosis.recommendedNextAction, '最初に実行すべき確認・入力順です。'],
     ['payment_alias_review', 'open_total', String(paymentSnapshot.openTotal), 'CS_入金名寄せ確認 に現在表示されている件数です。'],
     ['payment_alias_review', 'open_p1', String(paymentSnapshot.openP1), '最優先で確定判断が必要な入金レビュー件数です。'],
     ['payment_alias_review', 'open_p2', String(paymentSnapshot.openP2), '候補調査や今後の顧客取込待ちが必要な入金レビュー件数です。'],
@@ -984,9 +1163,18 @@ export function buildCsApprovalProgress(
     ['payment_alias_review', 'p1_undecided', String(paymentSnapshot.undecidedP1), 'P1 のうち operator_decision_status が未入力の件数です。'],
     ['payment_alias_review', 'decided_waiting_sync', String(paymentSnapshot.decidedAwaitingSync), '運営判断は入ったが sync_status が processed ではない件数です。'],
     ['payment_alias_review', 'invalid_open', String(paymentSnapshot.invalidOpen), 'invalid_* の sync_status が残っており、入力修正が必要な件数です。'],
+    ['payment_alias_review', 'source_wait_open', String(paymentSnapshot.sourceWaitOpen), '候補調査または次回取込待ちとして保留すべき P2/P3 件数です。'],
+    ['payment_alias_review', 'oldest_open_at_jst', paymentSnapshot.oldestOpenAtJst, 'open queue 内で最も古い last_collected_at です。'],
+    ['payment_alias_review', 'oldest_p1_undecided_at_jst', paymentSnapshot.oldestP1UndecidedAtJst, '未判断 P1 の中で最も古い last_collected_at です。'],
+    ['payment_alias_review', 'oldest_decided_waiting_sync_at_jst', paymentSnapshot.oldestDecidedAwaitingSyncAtJst, '判断済み未反映 row の中で最も古い last_collected_at です。'],
     ['payment_alias_review', 'processed_last_7d', String(paymentThroughput.processed7d), '直近7日で runWritebackCollection が処理した入金alias件数の合計です。'],
     ['payment_alias_review', 'invalid_last_7d', String(paymentThroughput.invalid7d), '直近7日で runWritebackCollection が invalid とした入金alias件数の合計です。'],
     ['payment_alias_review', 'last_writeback_success_at_jst', paymentThroughput.lastSuccessAtJst, 'Sync_Log で確認できる最新の runWritebackCollection 成功日時です。'],
+    ['payment_alias_review', 'last_writeback_age', formatAgeHoursLabel(paymentThroughput.lastSuccessAgeHours), '最新 writeback 成功からの経過時間です。30分 cadence から大きく外れたら点検します。'],
+    ['continuation_alias_review', 'queue_status', continuationDiagnosis.queueStatus, 'operator が最初に見るべき現在の状態です。'],
+    ['continuation_alias_review', 'primary_bottleneck', continuationDiagnosis.primaryBottleneck, 'いま queue を詰まらせている主因です。'],
+    ['continuation_alias_review', 'next_action_owner', continuationDiagnosis.nextActionOwner, '次の一手を持つ主体です。'],
+    ['continuation_alias_review', 'recommended_next_action', continuationDiagnosis.recommendedNextAction, '最初に実行すべき確認・入力順です。'],
     ['continuation_alias_review', 'open_total', String(continuationSnapshot.openTotal), 'CS_継続名寄せ確認 に現在表示されている件数です。'],
     ['continuation_alias_review', 'open_p1', String(continuationSnapshot.openP1), '最優先で確定判断が必要な継続レビュー件数です。'],
     ['continuation_alias_review', 'open_p2', String(continuationSnapshot.openP2), '候補調査や今後の顧客取込待ちが必要な継続レビュー件数です。'],
@@ -994,9 +1182,14 @@ export function buildCsApprovalProgress(
     ['continuation_alias_review', 'p1_undecided', String(continuationSnapshot.undecidedP1), 'P1 のうち operator_decision_status が未入力の件数です。'],
     ['continuation_alias_review', 'decided_waiting_sync', String(continuationSnapshot.decidedAwaitingSync), '運営判断は入ったが sync_status が processed ではない件数です。'],
     ['continuation_alias_review', 'invalid_open', String(continuationSnapshot.invalidOpen), 'invalid_* の sync_status が残っており、入力修正が必要な件数です。'],
+    ['continuation_alias_review', 'source_wait_open', String(continuationSnapshot.sourceWaitOpen), '候補調査または次回取込待ちとして保留すべき P2/P3 件数です。'],
+    ['continuation_alias_review', 'oldest_open_at_jst', continuationSnapshot.oldestOpenAtJst, 'open queue 内で最も古い last_collected_at です。'],
+    ['continuation_alias_review', 'oldest_p1_undecided_at_jst', continuationSnapshot.oldestP1UndecidedAtJst, '未判断 P1 の中で最も古い last_collected_at です。'],
+    ['continuation_alias_review', 'oldest_decided_waiting_sync_at_jst', continuationSnapshot.oldestDecidedAwaitingSyncAtJst, '判断済み未反映 row の中で最も古い last_collected_at です。'],
     ['continuation_alias_review', 'processed_last_7d', String(continuationThroughput.processed7d), '直近7日で runWritebackCollection が処理した継続alias件数の合計です。'],
     ['continuation_alias_review', 'invalid_last_7d', String(continuationThroughput.invalid7d), '直近7日で runWritebackCollection が invalid とした継続alias件数の合計です。'],
     ['continuation_alias_review', 'last_writeback_success_at_jst', continuationThroughput.lastSuccessAtJst, 'Sync_Log で確認できる最新の runWritebackCollection 成功日時です。'],
+    ['continuation_alias_review', 'last_writeback_age', formatAgeHoursLabel(continuationThroughput.lastSuccessAgeHours), '最新 writeback 成功からの経過時間です。30分 cadence から大きく外れたら点検します。'],
     ['partner_status_pipeline', 'open_total', String(partnerAssignments.length), 'Customer_Coach_Assignments に残っている有効な partner 割当件数です。'],
     ['partner_status_pipeline', 'waiting_first_update', String(partnerWaitingFirstUpdate), 'last_partner_update_at がまだ入っていない partner lead 件数です。'],
     ['partner_status_pipeline', 'stale_30d', String(partnerStaleCount), '最終更新基準日から30日以上経過した partner lead 件数です。'],
@@ -1005,6 +1198,7 @@ export function buildCsApprovalProgress(
     ['partner_status_pipeline', 'processed_last_7d', String(partnerThroughput.processed7d), '直近7日で runWritebackCollection が処理した partner status 件数の合計です。'],
     ['partner_status_pipeline', 'invalid_last_7d', String(partnerThroughput.invalid7d), '直近7日で runWritebackCollection が invalid とした partner status 件数の合計です。'],
     ['partner_status_pipeline', 'last_writeback_success_at_jst', partnerThroughput.lastSuccessAtJst, 'Sync_Log で確認できる最新の partner status writeback 成功日時です。'],
+    ['partner_status_pipeline', 'last_writeback_age', formatAgeHoursLabel(partnerThroughput.lastSuccessAgeHours), '最新 writeback 成功からの経過時間です。'],
   ];
 }
 

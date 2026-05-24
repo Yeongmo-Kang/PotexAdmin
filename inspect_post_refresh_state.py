@@ -127,6 +127,29 @@ def review_queue_summary(service, spreadsheet_id: str, tab_name: str) -> Dict[st
     }
 
 
+def approval_diagnosis_summary(service, spreadsheet_id: str, tab_name: str) -> Dict[str, Any]:
+    try:
+        rows = read_values(service, spreadsheet_id, f"'{tab_name}'!A:Z")
+    except HttpError as exc:
+        return {"present": False, "error": str(exc)}
+    dicts = table_to_dicts(rows)
+    return {
+        "present": True,
+        "row_count": max(0, len(rows) - 1),
+        "header": rows[0] if rows else [],
+        "queue_status_counts": dict(Counter(row.get("queue_status", "") for row in dicts)),
+        "next_action_owner_counts": dict(Counter(row.get("next_action_owner", "") for row in dicts)),
+        "scope_status": {
+            row.get("scope", ""): {
+                "queue_status": row.get("queue_status", ""),
+                "recommended_next_action": row.get("recommended_next_action", ""),
+                "writeback_freshness": row.get("writeback_freshness", ""),
+            }
+            for row in dicts if row.get("scope")
+        },
+    }
+
+
 def main() -> None:
     props = json.loads(PROPS_PATH.read_text(encoding="utf-8"))
     service = load_service()
@@ -157,6 +180,7 @@ def main() -> None:
             "CS_Payment_Alias_Review": review_queue_summary(service, workbook_ids["cs"], "CS_入金名寄せ確認"),
             "CS_Continuation_Alias_Review": review_queue_summary(service, workbook_ids["cs"], "CS_継続名寄せ確認"),
         },
+        "cs_approval_diagnosis": approval_diagnosis_summary(service, workbook_ids["cs"], "CS_承認診断"),
     }
 
     health = report["health"]
@@ -171,6 +195,7 @@ def main() -> None:
         "acquisition_metrics_present_in_exec_and_concierge": acquisition_metrics_present,
         "cs_payment_alias_review_safe_for_operator_approval": review_queues_safe,
         "cs_continuation_alias_review_present": report["cs_review_queues"]["CS_Continuation_Alias_Review"].get("present", False),
+        "cs_approval_diagnosis_present": report["cs_approval_diagnosis"].get("present", False),
     }
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

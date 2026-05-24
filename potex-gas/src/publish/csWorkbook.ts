@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { readSheetAsObjects, readSheetAsObjectsOrEmpty, clearAndRewrite, normalizeDateColumns, openSpreadsheetById } from '../sheets';
-import { buildCsReadme, buildCsFollowupQueue, buildCsContinuationTargets, buildCsAliasResolutionInput, buildCsPaymentAliasReview, buildCsContinuationAliasReview, buildCsApprovalProgress, buildCsAssignmentInput } from './views/cs';
+import { buildCsReadme, buildCsFollowupQueue, buildCsContinuationTargets, buildCsAliasResolutionInput, buildCsPaymentAliasReview, buildCsContinuationAliasReview, buildCsApprovalDiagnosis, buildCsApprovalProgress, buildCsAssignmentInput } from './views/cs';
 
 function safeReadSheetAsObjects(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string): Array<Record<string, string>> {
   try {
@@ -69,6 +69,7 @@ export function publishCsWorkbook(): void {
   ]);
   clearAndRewrite(cs, VIEWS.CS_ALIAS_RESOLUTION_INPUT, buildCsAliasResolutionInput(exceptionRows, aliasRows, existingAliasInputRows));
   clearAndRewrite(cs, VIEWS.CS_ASSIGNMENT_INPUT, buildCsAssignmentInput(applicationRows, customerRows, coachRows, customerCoachAssignmentRows, existingAssignmentInputRows));
+  clearAndRewrite(cs, VIEWS.CS_APPROVAL_DIAGNOSIS, buildCsApprovalDiagnosis(paymentAliasReview, continuationAliasReview, syncLogRows));
   clearAndRewrite(cs, VIEWS.CS_APPROVAL_PROGRESS, buildCsApprovalProgress(paymentAliasReview, continuationAliasReview, syncLogRows, customerCoachAssignmentRows));
   clearAndRewrite(cs, VIEWS.CS_PAYMENT_ALIAS_REVIEW, paymentAliasReview);
   clearAndRewrite(cs, VIEWS.CS_CONTINUATION_ALIAS_REVIEW, continuationAliasReview);

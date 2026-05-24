@@ -29,6 +29,7 @@
 - アーキテクチャガードレールに、ERP モジュール化原則と operator UX 原則を反映済み
 - workbook 側 import は `publish/views/` の feature facade へ分離済み
 - writeback input contract は `potex-gas/src/contracts/` に集約済み
+- approval queue には `CS_承認診断` / 拡張 `CS_承認進捗` / `inspect_approval_queue_state.py` を追加済み
 
 ## いま残っている本質課題
 1. **運用承認キューの処理はまだ人手依存が大きい**
@@ -42,40 +43,46 @@
 
 ## 優先順位
 
-### Priority 0 — いま止めないための自動化・運用安定化
+### Priority 0 — いま止めないための自動化・運用安定化（repo-side tranche 完了）
 **目的:** 既存運用の詰まりと属人化を減らす。
 
-#### Task 0-1: approval queue の実運用フローを短縮する
-**Objective:** operator が最小手数で P1 を処理できる状態を作る。
+#### Task 0-1: approval queue の実運用フローを短縮する（完了）
+**Result:** `CS_承認診断` を追加し、operator が「今やること / 待つこと / 点検すること」を 1 タブで判定できるようにした。
 
 **Files:**
-- Modify: `OPERATIONS_MANUAL.md`
-- Modify: `docs/backlog.md`
-- Optional follow-up: `potex-gas/src/publish/views.ts`
+- Modified: `potex-gas/src/constants.ts`
+- Modified: `potex-gas/src/publish/views.ts`
+- Modified: `potex-gas/src/publish/views/cs.ts`
+- Modified: `potex-gas/src/publish/csWorkbook.ts`
+- Modified: `OPERATIONS_MANUAL.md`
 
-**Deliverables:**
-- P1 優先処理ルールの明文化
-- `decided_waiting_sync` / `invalid_open` が増えたときの確認順序を固定
-- 必要なら approval summary view をさらに短く読みやすくする改善案を追加
+**Delivered:**
+- `CS_承認診断` タブ追加
+- `queue_status` / `primary_bottleneck` / `next_action_owner` / `recommended_next_action` を publish
+- `CS_承認進捗` に `source_wait_open` / oldest timestamps / `last_writeback_age` を追加
+- runbook を `CS_承認診断` → `CS_承認進捗` 起点へ更新
 
 **Verification:**
-- operator が `CS_承認進捗` → review タブの順で迷わず動ける
-- runbook だけで「何を見て、何を入れ、何を待つか」が分かる
+- operator が 1〜2 タブで「P1優先処理」「入力修正」「同期待ち」「要点検」を切り分けられる
 
-#### Task 0-2: 自動化の inspectability を増やす
-**Objective:** publish / writeback / full refresh の異常を運用側が早く見つけられるようにする。
+#### Task 0-2: 自動化の inspectability を増やす（完了）
+**Result:** read-only inspection script で approval queue の live 状態を deterministic に読めるようにした。
 
 **Files:**
-- Modify: `potex-gas/src/publish/views.ts` または分割後の `publish/views/*.ts`
-- Modify: `OPERATIONS_MANUAL.md`
-- Optional new script: `potex-gas/scripts/`
+- Created: `inspect_approval_queue_state.py`
+- Modified: `inspect_post_refresh_state.py`
+- Modified: `OPERATIONS_MANUAL.md`
+- Modified: `docs/backlog.md`
+- Modified: `agents/session.md`
 
-**Deliverables:**
-- stale / omission / queue growth を見つけやすい monitor の追加
-- 必要なら deterministic な inspection script を追加
+**Delivered:**
+- `inspect_approval_queue_state.py` 追加
+- `inspect_post_refresh_state.py` で `CS_承認診断` presence も検査
+- stale / invalid / operator decision pending / source wait を verdict として取得可能にした
 
 **Verification:**
-- 「止まっているのか」「人入力待ちなのか」「source 更新待ちなのか」を 1〜2 タブで切り分けられる
+- CLI から approval queue の overall state を read-only で確認できる
+- live workbook 反映後は operator でも「止まっているのか / 人待ちか / source待ちか」を説明しやすい
 
 ---
 
