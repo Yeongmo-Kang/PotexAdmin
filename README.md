@@ -35,6 +35,7 @@
 7. `docs/sheet-reference.md` — シート別リファレンス
 8. `docs/repo-resilience.md` — GitHub / ローカル復旧手順
 9. `docs/architecture-guardrails.md` — GAS モジュール境界と変更ルール
+10. `docs/plans/2026-05-25-automation-and-erp-roadmap.md` — 自動化 + ERP 方向の優先計画
 
 ## 一次基準の文書
 - 公式な文書・コードの一次基準: GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`)
