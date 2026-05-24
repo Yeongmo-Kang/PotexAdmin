@@ -34,6 +34,7 @@
 6. `docs/database-overview.md` — DB 全体像
 7. `docs/sheet-reference.md` — シート別リファレンス
 8. `docs/repo-resilience.md` — GitHub / ローカル復旧手順
+9. `docs/architecture-guardrails.md` — GAS モジュール境界と変更ルール
 
 ## 一次基準の文書
 - 公式な文書・コードの一次基準: GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`)
@@ -43,6 +44,7 @@
 - シート別仕様: `docs/sheet-reference.md`
 - 運用手順: `OPERATIONS_MANUAL.md`
 - workbook 構成: `OPS_WORKBOOK_ARCHITECTURE.md`
+- アーキテクチャガードレール: `docs/architecture-guardrails.md`
 - backlog: `docs/backlog.md`
 - セッション状態: `agents/session.md`
 

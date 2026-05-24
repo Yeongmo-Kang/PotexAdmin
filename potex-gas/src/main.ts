@@ -6,51 +6,143 @@ import { publishSalesWorkbook } from './publish/salesWorkbook';
 import { publishPartnerWorkbooks } from './publish/partnerWorkbook';
 import { collectCsWritebackRows } from './writeback/csWriteback';
 import { collectPartnerStatusWritebackRows } from './writeback/partnerStatusWriteback';
-import { getRuntimeConfig } from './config';
+import { getRuntimeConfig, type RuntimeConfig } from './config';
 import { appendSyncLog } from './logging';
 import { withScriptLock } from './locks';
 import { refreshCanonicalStaging } from './canonical/ingest';
 import { openSpreadsheetById } from './sheets';
-import { PROPS, SHEETS } from './constants';
+import { PROPS } from './constants';
 import { PARTNER_ASSIGNEES } from './partners';
 
-function pruneLegacyPartnerSheets(): void {
-  const cfg = getRuntimeConfig();
-  const db = openSpreadsheetById(cfg.dbSpreadsheetId);
-  const cs = openSpreadsheetById(cfg.csSpreadsheetId);
-  ['Partners', 'Partner_Alias_Map', 'Customer_Partner_Assignments', 'Partner_Pipeline_Status'].forEach((sheetName) => {
-    const sheet = db.getSheetByName(sheetName);
-    if (sheet) db.deleteSheet(sheet);
-  });
-  const oldCsSheet = cs.getSheetByName('CS_Partner_Assignment_Input');
-  if (oldCsSheet) cs.deleteSheet(oldCsSheet);
-  [cfg.inaiSpreadsheetId, cfg.satoSpreadsheetId].forEach((spreadsheetId) => {
-    if (!spreadsheetId) return;
-    const workbook = openSpreadsheetById(spreadsheetId);
-    const defaultSheet = workbook.getSheetByName('Sheet1');
-    if (defaultSheet && workbook.getSheets().length > 1) workbook.deleteSheet(defaultSheet);
-  });
+const LEGACY_DB_SHEETS = [
+  'Partners',
+  'Partner_Alias_Map',
+  'Customer_Partner_Assignments',
+  'Partner_Pipeline_Status',
+] as const;
+
+const LEGACY_CS_SHEETS = ['CS_Partner_Assignment_Input'] as const;
+const DEFAULT_PARTNER_SHEET_NAME = 'Sheet1';
+
+type CsWritebackStats = ReturnType<typeof collectCsWritebackRows>;
+type PartnerWritebackStats = ReturnType<typeof collectPartnerStatusWritebackRows>;
+type WritebackStats = CsWritebackStats & PartnerWritebackStats;
+type SyncLogDetails = Record<string, unknown>;
+
+type LegacyCleanupResult = {
+  removed: string[];
+  notFound: string[];
+};
+
+function deleteSheetIfPresent(
+  workbook: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  sheetName: string,
+): boolean {
+  const sheet = workbook.getSheetByName(sheetName);
+  if (!sheet) return false;
+  workbook.deleteSheet(sheet);
+  return true;
 }
 
-function publishAllWorkbooks(): void {
+function cleanupLegacyPartnerArtifacts(cfg: RuntimeConfig): LegacyCleanupResult {
+  const removed: string[] = [];
+  const notFound: string[] = [];
+  const db = openSpreadsheetById(cfg.dbSpreadsheetId);
+  const cs = openSpreadsheetById(cfg.csSpreadsheetId);
+
+  LEGACY_DB_SHEETS.forEach((sheetName) => {
+    if (deleteSheetIfPresent(db, sheetName)) {
+      removed.push(`db:${sheetName}`);
+      return;
+    }
+    notFound.push(`db:${sheetName}`);
+  });
+
+  LEGACY_CS_SHEETS.forEach((sheetName) => {
+    if (deleteSheetIfPresent(cs, sheetName)) {
+      removed.push(`cs:${sheetName}`);
+      return;
+    }
+    notFound.push(`cs:${sheetName}`);
+  });
+
+  [cfg.inaiSpreadsheetId, cfg.satoSpreadsheetId].forEach((spreadsheetId, index) => {
+    if (!spreadsheetId) return;
+    const workbook = openSpreadsheetById(spreadsheetId);
+    const workbookKey = index === 0 ? 'inai' : 'sato';
+    const defaultSheet = workbook.getSheetByName(DEFAULT_PARTNER_SHEET_NAME);
+    if (defaultSheet && workbook.getSheets().length > 1) {
+      workbook.deleteSheet(defaultSheet);
+      removed.push(`${workbookKey}:${DEFAULT_PARTNER_SHEET_NAME}`);
+      return;
+    }
+    notFound.push(`${workbookKey}:${DEFAULT_PARTNER_SHEET_NAME}`);
+  });
+
+  return { removed, notFound };
+}
+
+function publishAllWorkbooks(cfg: RuntimeConfig = getRuntimeConfig()): void {
   publishCsWorkbook();
   publishExecutiveWorkbook();
   publishCoachesWorkbook();
   publishConciergeWorkbook();
   publishSalesWorkbook();
   publishPartnerWorkbooks();
-  pruneLegacyPartnerSheets();
+  cleanupLegacyPartnerArtifacts(cfg);
 }
 
-function writebackChangedAnything(
-  csStats: ReturnType<typeof collectCsWritebackRows>,
-  partnerStats: ReturnType<typeof collectPartnerStatusWritebackRows>,
-): boolean {
+function collectWritebackStats(): WritebackStats {
+  return {
+    ...collectCsWritebackRows(),
+    ...collectPartnerStatusWritebackRows(),
+  };
+}
+
+function shouldRefreshAfterWriteback(stats: WritebackStats): boolean {
   return (
-    csStats.processedAliasRows + csStats.processedPaymentAliasRows + csStats.processedContinuationAliasRows + csStats.processedPartnerAssignmentRows
-    + csStats.invalidAliasRows + csStats.invalidPaymentAliasRows + csStats.invalidContinuationAliasRows + csStats.invalidPartnerAssignmentRows
-    + partnerStats.processedPartnerStatusRows + partnerStats.invalidPartnerStatusRows
+    stats.processedPaymentAliasRows > 0
+    || stats.processedContinuationAliasRows > 0
+    || stats.processedPartnerAssignmentRows > 0
+    || stats.processedPartnerStatusRows > 0
+  );
+}
+
+function writebackChangedAnything(stats: WritebackStats): boolean {
+  return (
+    stats.processedAliasRows
+    + stats.processedPaymentAliasRows
+    + stats.processedContinuationAliasRows
+    + stats.processedPartnerAssignmentRows
+    + stats.invalidAliasRows
+    + stats.invalidPaymentAliasRows
+    + stats.invalidContinuationAliasRows
+    + stats.invalidPartnerAssignmentRows
+    + stats.processedPartnerStatusRows
+    + stats.invalidPartnerStatusRows
   ) > 0;
+}
+
+function runWritebackCycle(cfg: RuntimeConfig, baseStats: SyncLogDetails = {}): SyncLogDetails {
+  const writebackStats = collectWritebackStats();
+  let latestStats: SyncLogDetails = { ...baseStats, ...writebackStats };
+
+  if (shouldRefreshAfterWriteback(writebackStats)) {
+    latestStats = { ...refreshCanonicalStaging(cfg), ...writebackStats };
+  }
+
+  if (writebackChangedAnything(writebackStats)) {
+    publishAllWorkbooks(cfg);
+  }
+
+  return latestStats;
+}
+
+function dropSheetAndLog(actionName: string, sheetName: string): void {
+  const cfg = getRuntimeConfig();
+  const db = openSpreadsheetById(cfg.dbSpreadsheetId);
+  const removed = deleteSheetIfPresent(db, sheetName);
+  appendSyncLog(actionName, 'success', removed ? { removed: true } : { removed: false, reason: 'not_found' });
 }
 
 export function runCanonicalRefresh(): void {
@@ -63,7 +155,8 @@ export function runCanonicalRefresh(): void {
 
 export function runPublishAll(): void {
   withScriptLock('runPublishAll', () => {
-    publishAllWorkbooks();
+    const cfg = getRuntimeConfig();
+    publishAllWorkbooks(cfg);
     appendSyncLog('runPublishAll', 'success');
   });
 }
@@ -71,17 +164,7 @@ export function runPublishAll(): void {
 export function runWritebackCollection(): void {
   withScriptLock('runWritebackCollection', () => {
     const cfg = getRuntimeConfig();
-    const csWritebackStats = collectCsWritebackRows();
-    const partnerWritebackStats = collectPartnerStatusWritebackRows();
-    const writebackStats = { ...csWritebackStats, ...partnerWritebackStats };
-    let latestStats: Record<string, unknown> = { ...writebackStats };
-
-    if (csWritebackStats.processedPaymentAliasRows > 0 || csWritebackStats.processedContinuationAliasRows > 0 || csWritebackStats.processedPartnerAssignmentRows > 0 || partnerWritebackStats.processedPartnerStatusRows > 0) {
-      latestStats = { ...refreshCanonicalStaging(cfg), ...writebackStats };
-    }
-
-    if (writebackChangedAnything(csWritebackStats, partnerWritebackStats)) publishAllWorkbooks();
-
+    const latestStats = runWritebackCycle(cfg);
     appendSyncLog('runWritebackCollection', 'success', latestStats);
   });
 }
@@ -89,46 +172,19 @@ export function runWritebackCollection(): void {
 export function runFullRefresh(): void {
   withScriptLock('runFullRefresh', () => {
     const cfg = getRuntimeConfig();
-    let latestStats: Record<string, unknown> = refreshCanonicalStaging(cfg);
-    publishAllWorkbooks();
-
-    const csWritebackStats = collectCsWritebackRows();
-    const partnerWritebackStats = collectPartnerStatusWritebackRows();
-    const writebackStats = { ...csWritebackStats, ...partnerWritebackStats };
-    latestStats = { ...latestStats, ...writebackStats };
-
-    if (csWritebackStats.processedPaymentAliasRows > 0 || csWritebackStats.processedContinuationAliasRows > 0 || csWritebackStats.processedPartnerAssignmentRows > 0 || partnerWritebackStats.processedPartnerStatusRows > 0) {
-      latestStats = { ...refreshCanonicalStaging(cfg), ...writebackStats };
-    }
-
-    if (writebackChangedAnything(csWritebackStats, partnerWritebackStats)) publishAllWorkbooks();
-
+    const refreshStats = refreshCanonicalStaging(cfg);
+    publishAllWorkbooks(cfg);
+    const latestStats = runWritebackCycle(cfg, refreshStats);
     appendSyncLog('runFullRefresh', 'success', latestStats);
   });
 }
 
 export function dropOrphanStagingLineRegistration(): void {
-  const cfg = getRuntimeConfig();
-  const ss = openSpreadsheetById(cfg.dbSpreadsheetId);
-  const sheet = ss.getSheetByName('Staging_LineRegistration');
-  if (!sheet) {
-    appendSyncLog('dropOrphanStagingLineRegistration', 'success', { removed: false, reason: 'not_found' });
-    return;
-  }
-  ss.deleteSheet(sheet);
-  appendSyncLog('dropOrphanStagingLineRegistration', 'success', { removed: true });
+  dropSheetAndLog('dropOrphanStagingLineRegistration', 'Staging_LineRegistration');
 }
 
 export function dropOrphanStagingFeedback(): void {
-  const cfg = getRuntimeConfig();
-  const ss = openSpreadsheetById(cfg.dbSpreadsheetId);
-  const sheet = ss.getSheetByName('Staging_Feedback');
-  if (!sheet) {
-    appendSyncLog('dropOrphanStagingFeedback', 'success', { removed: false, reason: 'not_found' });
-    return;
-  }
-  ss.deleteSheet(sheet);
-  appendSyncLog('dropOrphanStagingFeedback', 'success', { removed: true });
+  dropSheetAndLog('dropOrphanStagingFeedback', 'Staging_Feedback');
 }
 
 export function provisionPartnerWorkbooks(): void {
@@ -144,7 +200,7 @@ export function provisionPartnerWorkbooks(): void {
     [PROPS.SATO_SPREADSHEET_ID]: satoSpreadsheet.getId(),
   }, false);
 
-  publishAllWorkbooks();
+  publishAllWorkbooks(getRuntimeConfig());
   appendSyncLog('provisionPartnerWorkbooks', 'success', {
     inaiSpreadsheetId: inaiSpreadsheet.getId(),
     inaiUrl: inaiSpreadsheet.getUrl(),
@@ -156,47 +212,6 @@ export function provisionPartnerWorkbooks(): void {
 }
 
 export function dropLegacyPartnerSheets(): void {
-  const cfg = getRuntimeConfig();
-  const removed: string[] = [];
-  const notFound: string[] = [];
-  const db = openSpreadsheetById(cfg.dbSpreadsheetId);
-  const cs = openSpreadsheetById(cfg.csSpreadsheetId);
-
-  [
-    'Partners',
-    'Partner_Alias_Map',
-    'Customer_Partner_Assignments',
-    'Partner_Pipeline_Status',
-  ].forEach((sheetName) => {
-    const sheet = db.getSheetByName(sheetName);
-    if (!sheet) {
-      notFound.push(`db:${sheetName}`);
-      return;
-    }
-    db.deleteSheet(sheet);
-    removed.push(`db:${sheetName}`);
-  });
-
-  const oldCsSheet = cs.getSheetByName('CS_Partner_Assignment_Input');
-  if (oldCsSheet) {
-    cs.deleteSheet(oldCsSheet);
-    removed.push('cs:CS_Partner_Assignment_Input');
-  } else {
-    notFound.push('cs:CS_Partner_Assignment_Input');
-  }
-
-  [cfg.inaiSpreadsheetId, cfg.satoSpreadsheetId].forEach((spreadsheetId, index) => {
-    if (!spreadsheetId) return;
-    const workbook = openSpreadsheetById(spreadsheetId);
-    const defaultSheet = workbook.getSheetByName('Sheet1');
-    if (defaultSheet && workbook.getSheets().length > 1) {
-      workbook.deleteSheet(defaultSheet);
-      removed.push(`${index === 0 ? 'inai' : 'sato'}:Sheet1`);
-    } else {
-      notFound.push(`${index === 0 ? 'inai' : 'sato'}:Sheet1`);
-    }
-  });
-
-  appendSyncLog('dropLegacyPartnerSheets', 'success', { removed, notFound });
+  const cleanup = cleanupLegacyPartnerArtifacts(getRuntimeConfig());
+  appendSyncLog('dropLegacyPartnerSheets', 'success', cleanup);
 }
-
