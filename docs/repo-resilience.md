@@ -1,93 +1,100 @@
-# Repo Resilience and Restore
+# Repo 復旧・バックアップ手順
 
-## Goal
-Keep `PotexAdmin` recoverable if either of these disappears:
+## この文書の目的
+`PotexAdmin` を、次のどちらかが失われても復旧できる状態に保つ。
 - GitHub repo (`origin`)
-- local working copy (`/home/ubuntu/.hermes/projects/PotexAdmin`)
+- ローカル作業コピー (`/home/ubuntu/.hermes/projects/PotexAdmin`)
 
-## Active copies
-- Primary remote: `git@github.com:Yeongmo-Kang/PotexAdmin.git`
-- Working copy: `/home/ubuntu/.hermes/projects/PotexAdmin`
-- Local bare mirror backup: `/home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git`
-- Local bundle snapshots: `/home/ubuntu/.hermes/backups/git-bundles/PotexAdmin/`
+## 現在あるコピー
+- 主 remote: `git@github.com:Yeongmo-Kang/PotexAdmin.git`
+- 作業コピー: `/home/ubuntu/.hermes/projects/PotexAdmin`
+- ローカル bare mirror: `/home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git`
+- ローカル bundle snapshot: `/home/ubuntu/.hermes/backups/git-bundles/PotexAdmin/`
 
-## Automation
-A scheduled host-level cron job refreshes the local mirror and verifies a restorable bundle every 6 hours.
+## 自動バックアップ
+6時間ごとに host 側 cron で mirror 更新と bundle 検証を実行する。
 
-- Cron entry: `0 */6 * * * /home/ubuntu/.hermes/scripts/potexadmin_git_resilience_backup.sh >> /home/ubuntu/.hermes/logs/potexadmin_git_backup.log 2>&1`
-- Script: `~/.hermes/scripts/potexadmin_git_resilience_backup.sh`
-- Backup storage permissions are intentionally restricted to the local `ubuntu` user (`700` directories, `600` files where applicable).
+- cron entry:
+  - `0 */6 * * * /home/ubuntu/.hermes/scripts/potexadmin_git_resilience_backup.sh >> /home/ubuntu/.hermes/logs/potexadmin_git_backup.log 2>&1`
+- script:
+  - `~/.hermes/scripts/potexadmin_git_resilience_backup.sh`
+- 権限:
+  - backup 保存先は `ubuntu` ユーザーだけが読めるよう制限済み
+  - directory は基本 `700`
+  - backup file は基本 `600`
 
-## Scope limits
-This setup protects against these cases:
-- the working copy is deleted or damaged
-- GitHub is temporarily unavailable or the repo needs to be recreated from local history
+## この仕組みで守れるもの
+- 作業コピーの削除・破損
+- GitHub 一時停止
+- GitHub repo を作り直す必要が出た場合の履歴復旧
 
-This setup does **not** protect against these cases by itself:
-- whole-server loss
-- disk failure
-- compromise of the `ubuntu` account
-- loss of uncommitted or ignored local-only files
+## この仕組みだけでは守れないもの
+- VPS 全体の消失
+- ディスク故障
+- `ubuntu` アカウント自体の侵害
+- commit 前の未保存変更
+- ignore 対象のローカル専用ファイル
 
-Important: the mirror and bundles preserve **committed Git history**. Uncommitted edits, ignored files, and local credentials are outside the backup guarantee.
+**重要:** この backup が守るのは、あくまで **commit 済みの Git 履歴**。
+未 commit の編集内容やローカル credential は対象外。
 
-## Restore paths
+## 復旧手順
 
-### A. If the local working copy is deleted
-Restore from GitHub:
+### A. 作業コピーが消えたとき
+GitHub から戻す:
 
 ```bash
 git clone git@github.com:Yeongmo-Kang/PotexAdmin.git /home/ubuntu/.hermes/projects/PotexAdmin
 ```
 
-Or restore from the local mirror:
+または local mirror から戻す:
 
 ```bash
 git clone /home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git /home/ubuntu/.hermes/projects/PotexAdmin
 ```
 
-### B. If GitHub disappears or becomes unavailable
-Restore from the local mirror:
+### B. GitHub が使えなくなったとき
+local mirror から復旧:
 
 ```bash
 git clone /home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git /home/ubuntu/.hermes/projects/PotexAdmin-restored
 ```
 
-Or restore from the latest bundle:
+または最新 bundle から復旧:
 
 ```bash
 git clone /home/ubuntu/.hermes/backups/git-bundles/PotexAdmin/latest.bundle /home/ubuntu/.hermes/projects/PotexAdmin-restored
 ```
 
-Then create a replacement remote and push:
+その後、新しい remote を付けて push:
 
 ```bash
 cd /home/ubuntu/.hermes/projects/PotexAdmin-restored
-git remote add origin <new-github-or-other-remote>
+git remote add origin <new-remote>
 git push -u origin main
 ```
 
-## Verification commands
-Check the two remotes known to the working copy:
+## 確認コマンド
+作業コピーに登録されている remote を確認:
 
 ```bash
 cd /home/ubuntu/.hermes/projects/PotexAdmin
 git remote -v
 ```
 
-Check that the local mirror is healthy:
+mirror の整合性確認:
 
 ```bash
-git --git-dir=/home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git fsck --full
+git --git-dir=/home/ubuntu/.hermes/backups/git-mirrors/PotexAdmin.git fsck --full --no-dangling
 ```
 
-Check that the latest bundle is restorable:
+latest bundle の復元性確認:
 
 ```bash
 git bundle verify /home/ubuntu/.hermes/backups/git-bundles/PotexAdmin/latest.bundle
 ```
 
-## Security notes
-- `.gemini/` is ignored because it contains local API-key material.
-- `generated/post_refresh_state.json` is ignored because it is local inspection output, not source of truth.
-- OAuth/token files stay outside the repo and must never be committed.
+## セキュリティメモ
+- `.gemini/` は local API key を含むため commit 禁止
+- `generated/post_refresh_state.json` は検証用出力なので source of truth ではない
+- OAuth / token / credential 類は repo 外に置き、commit しない
