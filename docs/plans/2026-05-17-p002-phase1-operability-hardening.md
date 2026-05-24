@@ -1,48 +1,48 @@
-# P-002 Phase 1 Operability Hardening Plan
+# P-002 Phase 1 運用性ハードニング計画
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task if execution is delegated.
+> **Hermes 向け:** 実行が委譲された場合は、この計画を subagent-driven-development スキルでタスクごとに実装すること。
 
-**Goal:** Make the Phase 1 workbook cutover feel operationally complete for non-technical Potex operators by aligning the workbook surface with the live reference sheet patterns already proven in `⭕️使用中｜POTEX数値管理`.
+**Goal:** `⭕️使用中｜POTEX数値管理` ですでに有効性が確認されているライブ参照シートのパターンに、ワークブック表面を合わせることで、Phase 1 のワークブック切り替えを非技術系の Potex オペレーターにとって「実運用が完成している」と感じられる状態にする。
 
-**Architecture:** Keep `POTEX DB` as the canonical hub, publish read models into `Potex CS` and `Potex Executive`, and add the minimum operability layers that the live sheet demonstrates: explicit operator input surfaces, a lightweight data-health/verification surface, and in-workbook guidance/runbook structure. Use GAS to populate these views so the structure stays refreshable rather than manually maintained.
+**Architecture:** `POTEX DB` を canonical hub として維持し、read model を `Potex CS` と `Potex Executive` に publish し、ライブシートが示している最小限の運用レイヤーを追加する。具体的には、明示的な operator input surface、軽量な data-health / verification surface、そして in-workbook guidance / runbook 構造を加える。これらのビューは手動保守ではなく refresh 可能な構造を保つため、GAS で生成する。
 
-**Tech Stack:** Google Sheets, Google Apps Script TypeScript, clasp, existing `potex-gas/` publish/writeback flow, `workbook_manifest.json` provisioning.
+**Tech Stack:** Google Sheets, Google Apps Script TypeScript, clasp, 既存の `potex-gas/` publish/writeback flow, `workbook_manifest.json` provisioning.
 
 ---
 
 ## Scope summary
 
-### What the live reference sheet teaches us
-- A workbook is easier to operate when it includes a human-facing README tab.
-- Derived dashboards should be separated from manual input surfaces.
-- Data health / reconciliation views should exist as first-class tabs, not just logs.
-- Debug/verification tabs are acceptable when they reduce operator guesswork during rollout.
+### ライブ参照シートから学べること
+- workbook は、人向けの README タブが含まれていると運用しやすい。
+- 派生ダッシュボードは、手入力用の surface と分離すべき。
+- Data health / reconciliation view は、単なるログではなく first-class なタブとして存在すべき。
+- rollout 中の operator の推測を減らせるなら、debug/verification タブは許容される。
 
-### What Phase 1 already had
-- Split-workbook architecture for DB / CS / Executive.
-- Published CS operational views.
-- Published Executive summary views.
-- Provisioning and script-properties scaffolding.
+### Phase 1 にすでにあったもの
+- DB / CS / Executive の split-workbook architecture。
+- publish 済みの CS operational views。
+- publish 済みの Executive summary views。
+- provisioning と script-properties の scaffolding。
 
-### What was still missing or inconsistent
-- `CS_別名解決入力` was part of the GAS workflow and docs, but not present in `workbook_manifest.json`.
-- `経営_データ状況` existed in the workbook manifest but was not populated by the Executive publish flow.
-- The live-sheet-inspired operability pattern had been recognized, but not yet converted into a concrete hardening sequence.
+### まだ不足していた点 / 不整合だった点
+- `CS_別名解決入力` は GAS workflow と docs には含まれていたが、`workbook_manifest.json` には存在していなかった。
+- `経営_データ状況` は workbook manifest には存在していたが、Executive publish flow では populate されていなかった。
+- ライブシート由来の operability pattern は認識されていたが、具体的な hardening sequence にはまだ落とし込まれていなかった。
 
 ---
 
-## Task 1: Align workbook provisioning with the actual CS operator workflow
+## Task 1: 実際の CS operator workflow と workbook provisioning を整合させる
 
-**Objective:** Ensure a newly provisioned CS workbook already contains every sheet the documented GAS flow expects.
+**Objective:** 新規 provision された CS workbook に、文書化済みの GAS flow が前提としている全シートが最初から含まれている状態にする。
 
 **Files:**
 - Modify: `workbook_manifest.json`
 - Inspect: `potex-gas/src/publish/views.ts`
 - Inspect: `PHASE1_CUTOVER_RUNBOOK.md`
 
-**Step 1: Freeze the CS alias-input contract**
+**Step 1: CS alias-input contract を固定する**
 
-Confirm these headers are the expected contract for `CS_別名解決入力`:
+`CS_別名解決入力` の想定 contract が次の header であることを確認する:
 - `alias_name`
 - `respondent_email`
 - `related_coach_name`
@@ -58,9 +58,9 @@ Confirm these headers are the expected contract for `CS_別名解決入力`:
 - `sync_status`
 - `last_collected_at`
 
-**Step 2: Put that contract into provisioning**
+**Step 2: その contract を provisioning に反映する**
 
-Ensure `workbook_manifest.json` includes `CS_別名解決入力` with the exact header order above.
+`workbook_manifest.json` に、上記と完全に同じ header 順で `CS_別名解決入力` が含まれていることを保証する。
 
 **Step 3: Verification**
 
@@ -69,13 +69,13 @@ Run:
 cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/potex-gas && npm run build
 ```
 
-Expected: successful build, and the manifest now matches the documented CS workflow.
+Expected: build が成功し、manifest が文書化済みの CS workflow と一致している。
 
 ---
 
-## Task 2: Turn Executive workbook data health into a real published view
+## Task 2: Executive workbook の data health を実際の published view にする
 
-**Objective:** Add a lightweight verification sheet that mirrors the role of `数値整合性チェック` in the live reference workbook.
+**Objective:** ライブ参照 workbook の `数値整合性チェック` と同じ役割を持つ、軽量な verification sheet を追加する。
 
 **Files:**
 - Modify: `potex-gas/src/constants.ts`
@@ -83,13 +83,13 @@ Expected: successful build, and the manifest now matches the documented CS workf
 - Modify: `potex-gas/src/publish/managementWorkbook.ts`
 - Inspect: `OPS_WORKBOOK_ARCHITECTURE.md`
 
-**Step 1: Add an explicit Executive view constant**
+**Step 1: Executive view constant を明示的に追加する**
 
-Expose `経営_データ状況` in `VIEWS` so the publish layer treats it as a first-class surface.
+`VIEWS` に `経営_データ状況` を公開し、publish layer がこれを first-class surface として扱うようにする。
 
-**Step 2: Define the initial health metrics**
+**Step 2: 初期 health metrics を定義する**
 
-Start with simple but useful metrics:
+まずはシンプルだが有用な指標から始める:
 - `customers_count`
 - `coaches_count`
 - `sessions_count`
@@ -98,14 +98,14 @@ Start with simple but useful metrics:
 - `continuation_targets_count`
 - `feedback_match_exception_count`
 
-Keep the shape minimal:
+shape は最小限に保つ:
 - `metric`
 - `value`
 - `note`
 
-**Step 3: Publish the sheet on every Executive refresh**
+**Step 3: Executive refresh ごとにそのシートを publish する**
 
-Use DB workbook source tabs to rebuild `経営_データ状況` whenever `publishExecutiveWorkbook()` runs.
+`publishExecutiveWorkbook()` 実行時に、DB workbook の source tab を使って `経営_データ状況` を毎回 rebuild する。
 
 **Step 4: Verification**
 
@@ -114,72 +114,72 @@ Run:
 cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/potex-gas && npm run build
 ```
 
-Expected: successful build and no TypeScript errors after wiring the additional published tab.
+Expected: build が成功し、追加した published tab の配線後も TypeScript error が出ない。
 
 ---
 
-## Task 3: Capture the live-sheet pattern mapping in project docs
+## Task 3: ライブシートの pattern mapping を project docs に記録する
 
-**Objective:** Make the operability intent discoverable so future work does not regress back to raw-data-only workbook design.
+**Objective:** 運用性改善の意図を発見可能な状態にし、将来の作業で raw-data-only な workbook 設計へ逆戻りしないようにする。
 
 **Files:**
 - Modify: `docs/backlog.md`
 - Modify: `agents/session.md`
 - Optional modify: `README.md`
 
-**Step 1: Record the concrete mapping**
+**Step 1: 具体的な mapping を記録する**
 
-Document this translation from the live sheet into Potex Phase 1:
-- `📘README_v2` pattern -> workbook guidance/runbook tabs to add later
+ライブシートから Potex Phase 1 への変換を次のように文書化する:
+- `📘README_v2` pattern -> 後から追加する workbook guidance/runbook tabs
 - `ダッシュボード` pattern -> `経営_コーチ負荷`, `経営_顧客リスク`
 - `数値整合性チェック` pattern -> `経営_データ状況`
-- debug/verify pattern -> rollout-time verification sheets or logs around publish/writeback
+- debug/verify pattern -> publish/writeback 周辺の rollout-time verification sheets または logs
 
-**Step 2: Record what was hardened now**
+**Step 2: 今回 harden した内容を記録する**
 
-Note that the current session already delivered:
-- manifest alignment for `CS_別名解決入力`
-- real publish support for `経営_データ状況`
+今回の session で、すでに次が提供されたことを明記する:
+- `CS_別名解決入力` の manifest alignment
+- `経営_データ状況` の実 publish support
 
 **Step 3: Verification**
 
-Read the updated docs and confirm they explain both:
-- what changed technically
-- why the change improves operator usability
+更新後の docs を読み、次の両方が説明されていることを確認する:
+- 技術的に何が変わったか
+- その変更がなぜ operator usability を改善するか
 
 ---
 
-## Task 4: Define the next thin slice after this hardening
+## Task 4: この hardening の次に取る thin slice を定義する
 
-**Objective:** Keep momentum on P-002 without overbuilding.
+**Objective:** 過剰実装せずに P-002 の勢いを維持する。
 
 **Files:**
 - Modify: `docs/backlog.md`
 - Inspect: `PHASE1_CUTOVER_RUNBOOK.md`
 - Inspect: `generated/phase1_script_properties.json`
 
-**Step 1: Keep the next execution step narrow**
+**Step 1: 次の実行ステップを狭く保つ**
 
-After this hardening, the next P-002 slice should be:
-1. create/deploy the GAS project
-2. inject script properties
-3. run `bootstrapProject()` / `installTriggers()` / `runCanonicalRefresh()` / `runPublishAll()`
-4. verify `CS_別名解決入力` and `経営_データ状況` in the real workbooks
+この hardening の次の P-002 slice は、次に限定する:
+1. GAS project を create/deploy する
+2. script properties を inject する
+3. `bootstrapProject()` / `installTriggers()` / `runCanonicalRefresh()` / `runPublishAll()` を実行する
+4. 実 workbook 上で `CS_別名解決入力` と `経営_データ状況` を確認する
 
-**Step 2: Preserve blocked status honestly**
+**Step 2: blocked status を正直に維持する**
 
-Do not claim customer raw ingest is complete until `SOURCE_CUSTOMERS_WORKBOOK_ID` is available.
+`SOURCE_CUSTOMERS_WORKBOOK_ID` が利用可能になるまで、customer raw ingest が complete だとは主張しない。
 
 **Step 3: Verification**
 
-Make sure the backlog still distinguishes:
+backlog が引き続き次を区別していることを確認する:
 - executable now: GAS deploy + publish verification
 - blocked later: customer source ingest completion
 
 ---
 
 ## Acceptance criteria
-- `workbook_manifest.json` contains `CS_別名解決入力`.
-- Executive publish flow writes `経営_データ状況`.
-- Project docs explain why these changes exist and how they connect to the live reference workbook.
-- The next operational step remains the real cutover: deploy GAS and verify the published Phase 1 workbooks.
+- `workbook_manifest.json` に `CS_別名解決入力` が含まれている。
+- Executive publish flow が `経営_データ状況` を書き出す。
+- project docs が、これらの変更がなぜ必要か、そしてライブ参照 workbook とどうつながるかを説明している。
+- 次の operational step が、引き続き本当の cutover であること: GAS を deploy し、publish 済みの Phase 1 workbooks を検証すること。

@@ -1,34 +1,34 @@
-# P-003 GAS Customer Alias Resolution Implementation Plan
+# P-003 GAS 顧客別名解決 実装計画
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task if execution is delegated.
+> **Hermes 向け:** 実行が委譲された場合は、この計画を subagent-driven-development スキルでタスクごとに実装すること。
 
-**Goal:** Make customer alias resolution operate through the CS workbook + GAS writeback flow as the default day-to-day process.
+**Goal:** 顧客 alias resolution が、CS workbook + GAS writeback flow を通じた日常運用の標準プロセスとして機能する状態にする。
 
-**Architecture:** The DB workbook remains canonical. Unmatched feedback rows are published into `CS_別名解決入力`, CS operators enter a decision there, `runWritebackCollection()` writes approved results back into `Customer_Alias_Map`, and the writeback flow updates `Feedback`, `Ops_Feedback_Review`, and `Exceptions_FeedbackMatch`. The Python bridge stays as fallback only.
+**Architecture:** DB workbook は canonical のまま維持する。未一致の feedback row を `CS_別名解決入力` に publish し、CS operator がそこで判断を入力し、`runWritebackCollection()` が承認済み結果を `Customer_Alias_Map` に書き戻す。その writeback flow により `Feedback`、`Ops_Feedback_Review`、`Exceptions_FeedbackMatch` も更新される。Python bridge は fallback としてのみ残す。
 
-**Tech Stack:** Google Apps Script TypeScript, Google Sheets, clasp, existing `potex-gas/` build flow.
+**Tech Stack:** Google Apps Script TypeScript, Google Sheets, clasp, 既存の `potex-gas/` build flow.
 
 ---
 
 ## Scope summary
 
-### What already exists
-- CS workbook publish path already creates `CS_別名解決入力`
-- GAS already exposes `runWritebackCollection()`
-- `collectCsWritebackRows()` already writes alias decisions back to DB-side sheets
-- Current documented unresolved case: `知子佐藤`
+### すでに存在しているもの
+- CS workbook の publish path はすでに `CS_別名解決入力` を生成する
+- GAS はすでに `runWritebackCollection()` を公開している
+- `collectCsWritebackRows()` はすでに alias decision を DB 側 sheet に書き戻す
+- 現在文書化されている unresolved case: `知子佐藤`
 
-### What is still missing
-- Operator workflow is not yet hardened/documented enough for routine use
-- Idempotency and overwrite behavior should be verified carefully
-- Publish-after-writeback loop should be explicit and validated
-- Manual QA checklist for operators is not yet captured as a concrete execution plan
+### まだ不足しているもの
+- operator workflow が、日常利用にはまだ十分 harden / documented されていない
+- idempotency と overwrite behavior を慎重に検証する必要がある
+- writeback 後の publish-after-writeback loop を明示し、検証すべき
+- operator 向けの manual QA checklist が、具体的な execution plan としてまだ記録されていない
 
 ---
 
-## Task 1: Freeze the current interface contract
+## Task 1: 現在の interface contract を固定する
 
-**Objective:** Confirm the exact columns and sheets that define the alias-resolution workflow so later changes do not break operator usage.
+**Objective:** alias-resolution workflow を定義する正確な column と sheet を確認し、後続変更で operator 利用が壊れないようにする。
 
 **Files:**
 - Inspect: `potex-gas/src/publish/views.ts`
@@ -37,9 +37,9 @@
 - Update: `docs/plans/2026-05-17-p003-gas-alias-resolution.md`
 - Optional update: `OPERATIONS_MANUAL.md`
 
-**Step 1: Confirm CS input sheet contract**
+**Step 1: CS input sheet contract を確認する**
 
-Verify these columns are the contract for `CS_別名解決入力`:
+`CS_別名解決入力` の contract が次の column であることを確認する:
 - `alias_name`
 - `respondent_email`
 - `related_coach_name`
@@ -55,21 +55,21 @@ Verify these columns are the contract for `CS_別名解決入力`:
 - `sync_status`
 - `last_collected_at`
 
-**Step 2: Confirm DB-side writeback targets**
+**Step 2: DB 側 writeback target を確認する**
 
-Verify the writeback path updates:
+writeback path が次を更新することを確認する:
 - `Customer_Alias_Map`
 - `Feedback`
 - `Ops_Feedback_Review`
 - `Exceptions_FeedbackMatch`
 
-**Step 3: Record non-obvious behaviors**
+**Step 3: 自明でない behavior を記録する**
 
-Document these implementation facts:
-- only rows with `operator_decision_status` and non-`processed` sync state are actionable
-- approved statuses are `approved`, `active`, `resolved`
-- feedback row uniqueness uses `source_sheet + source_row + respondent_email`
-- ops row uniqueness uses `source_sheet + source_row`
+次の実装上の事実を文書化する:
+- `operator_decision_status` があり、かつ `processed` ではない sync state の row だけが actionable
+- approval 系 status は `approved`, `active`, `resolved`
+- feedback row の uniqueness は `source_sheet + source_row + respondent_email` を使う
+- ops row の uniqueness は `source_sheet + source_row` を使う
 
 **Step 4: Verification**
 
@@ -78,77 +78,77 @@ Run:
 cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/potex-gas && npm run build
 ```
 
-Expected: successful TypeScript build.
+Expected: TypeScript build が成功する。
 
 ---
 
-## Task 2: Make publish → operator input → writeback → republish explicit
+## Task 2: publish → operator input → writeback → republish を明示化する
 
-**Objective:** Ensure the run order is operationally obvious and no human has to guess which function to run next.
+**Objective:** 実行順序を運用上わかりやすくし、次にどの function を実行すべきかを人が推測しなくてよい状態にする。
 
 **Files:**
 - Modify: `OPERATIONS_MANUAL.md`
 - Modify: `PHASE1_CUTOVER_RUNBOOK.md`
 - Optional modify: `README.md`
 
-**Step 1: Add the operator loop**
+**Step 1: operator loop を追加する**
 
-Document the exact sequence:
-1. `runPublishAll()` publishes unresolved alias rows to CS workbook
-2. CS operator fills decision columns in `CS_別名解決入力`
-3. `runWritebackCollection()` writes decisions back to DB workbook
-4. `runPublishAll()` runs again so CS workbook reflects resolved state
+正確な sequence を文書化する:
+1. `runPublishAll()` が unresolved alias row を CS workbook に publish する
+2. CS operator が `CS_別名解決入力` の decision column を入力する
+3. `runWritebackCollection()` が decision を DB workbook に書き戻す
+4. `runPublishAll()` を再実行し、CS workbook に resolved state を反映させる
 
-**Step 2: Add allowed operator edits**
+**Step 2: operator が編集してよい項目を追加する**
 
-Explicitly state that day-to-day operators should edit only:
+日常運用の operator は次だけを編集すべきことを明示する:
 - `operator_decision_status`
 - `operator_selected_customer_id`
 - `operator_selected_customer_name`
 - `operator_note`
 
-**Step 3: Add status semantics**
+**Step 3: status semantics を追加する**
 
-Document recommended values:
+推奨値を文書化する:
 - `review`
 - `approved`
 - `resolved`
-- when to use each
+- それぞれを使うタイミング
 
 **Step 4: Verification**
 
-Review the updated docs and confirm they match the actual GAS code paths already in:
+更新後の docs を見直し、実際の GAS code path と一致していることを確認する:
 - `publishCsWorkbook()`
 - `runWritebackCollection()`
 
 ---
 
-## Task 3: Harden writeback behavior against accidental operator mistakes
+## Task 3: writeback behavior を operator の誤操作に対して harden する
 
-**Objective:** Reduce the chance that partial or malformed operator input writes bad canonical data.
+**Objective:** 不完全または不正な operator input が、誤った canonical data を書き込む可能性を減らす。
 
 **Files:**
 - Modify: `potex-gas/src/writeback/csWriteback.ts`
 - Optional modify: `potex-gas/src/guards.ts`
 - Optional modify: `potex-gas/src/logging.ts`
 
-**Step 1: Add explicit validation rules**
+**Step 1: 明示的な validation rule を追加する**
 
-Before writing an alias row, require:
-- `operator_decision_status` is present
-- if status is approval-like, `operator_selected_customer_id` must be present
-- if status is approval-like, `operator_selected_customer_name` should be present or recoverable from `Customers`
+alias row を書き込む前に、次を要求する:
+- `operator_decision_status` が存在する
+- status が approval 系なら `operator_selected_customer_id` が必須
+- status が approval 系なら `operator_selected_customer_name` が存在するか、`Customers` から復元可能であること
 
-**Step 2: Fail safe, not silently**
+**Step 2: 黙って失敗させず、安全側に倒す**
 
-For invalid rows:
-- do not mark `sync_status=processed`
-- keep the row in CS workbook
-- append enough log detail to debug the row
+無効 row に対しては:
+- `sync_status=processed` にしない
+- row は CS workbook に残す
+- row を debug するのに十分な log detail を追記する
 
-**Step 3: Protect existing good alias rows**
+**Step 3: 既存の良い alias row を保護する**
 
-Ensure empty operator fields do not erase previously approved canonical mappings unless the workflow explicitly intends a reset.
+workflow が明示的に reset を意図していない限り、空の operator field によって既存の承認済み canonical mapping が消えないようにする。
 
 **Step 4: Verification**
 
@@ -157,53 +157,53 @@ Run:
 cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/potex-gas && npm run build
 ```
 
-Expected: successful build after validation logic changes.
+Expected: validation logic 変更後も build が成功する。
 
 ---
 
-## Task 4: Make republish behavior deterministic after alias writeback
+## Task 4: alias writeback 後の republish behavior を deterministic にする
 
-**Objective:** Ensure resolved aliases visibly disappear from exception-driven operator queues after writeback and republish.
+**Objective:** writeback と republish の後、resolved alias が exception-driven operator queue から視覚的に消えることを保証する。
 
 **Files:**
 - Inspect/modify: `potex-gas/src/publish/csWorkbook.ts`
 - Inspect/modify: `potex-gas/src/publish/views.ts`
 - Inspect/modify: `potex-gas/src/writeback/csWriteback.ts`
 
-**Step 1: Confirm exception removal path**
+**Step 1: exception removal path を確認する**
 
-Verify `collectCsWritebackRows()` removes resolved `customer_unmatched` rows from `Exceptions_FeedbackMatch`.
+`collectCsWritebackRows()` が、resolved した `customer_unmatched` row を `Exceptions_FeedbackMatch` から除去することを確認する。
 
-**Step 2: Confirm republish effect**
+**Step 2: republish effect を確認する**
 
-Verify `publishCsWorkbook()` rebuilds:
+`publishCsWorkbook()` が次を rebuild していることを確認する:
 - `CS_例外確認`
 - `CS_別名解決入力`
 
-from DB state after exceptions are removed.
+そして、その rebuild が exception 除去後の DB state に基づいていることを確認する。
 
-**Step 3: Decide whether processed rows should remain visible**
+**Step 3: processed row を表示し続けるかどうか決める**
 
-Pick one explicit behavior and document it:
-- resolved rows disappear from `CS_別名解決入力`, or
-- resolved rows remain for audit with `sync_status=processed`
+次のどちらか 1 つを明示的な behavior として選び、文書化する:
+- resolved row は `CS_別名解決入力` から消える
+- resolved row は `sync_status=processed` の audit 用として残る
 
-Given the current implementation, the default expectation is: resolved exception rows disappear on republish because the input sheet is regenerated from unresolved exceptions.
+現在の実装に基づく既定の期待値は、次のとおり: unresolved exception から input sheet を再生成するため、resolved exception row は republish 時に消える。
 
 **Step 4: Verification**
 
-Manual expected result after one successful alias resolution:
-- `Customer_Alias_Map` contains the alias
-- `Feedback` contains the resolved feedback row
-- `Ops_Feedback_Review` contains the resolved operational row
-- `Exceptions_FeedbackMatch` no longer contains that unresolved case
-- republished `CS_別名解決入力` no longer shows that row
+1 件の alias resolution が成功した後の期待結果:
+- `Customer_Alias_Map` に alias が含まれる
+- `Feedback` に resolved 済み feedback row が含まれる
+- `Ops_Feedback_Review` に resolved 済み operational row が含まれる
+- `Exceptions_FeedbackMatch` から当該 unresolved case が消える
+- republish 後の `CS_別名解決入力` に当該 row が表示されない
 
 ---
 
-## Task 5: Run a single-case acceptance test with the known unresolved customer
+## Task 5: 既知の unresolved customer で単一ケース受け入れ試験を行う
 
-**Objective:** Prove the full workflow using the known unmatched row before treating the process as production-ready.
+**Objective:** このプロセスを production-ready とみなす前に、既知の未一致 row を使って full workflow を実証する。
 
 **Files:**
 - Use existing sheets/workbooks
@@ -211,73 +211,73 @@ Manual expected result after one successful alias resolution:
 - Update: `agents/session.md`
 - Update: `docs/backlog.md`
 
-**Step 1: Prepare the test case**
+**Step 1: test case を準備する**
 
-Use the documented unresolved row:
+文書化済みの unresolved row を使う:
 - alias: `知子佐藤`
 - email: `cerena999@yahoo.co.jp`
 - coach: `稲川コーチ`
 
-**Step 2: Execute the workflow**
+**Step 2: workflow を実行する**
 
-Operational sequence:
-1. Run publish flow
-2. Enter operator decision in CS workbook
-3. Run writeback flow
-4. Run publish flow again
+運用 sequence:
+1. publish flow を実行
+2. CS workbook で operator decision を入力
+3. writeback flow を実行
+4. publish flow を再実行
 
-**Step 3: Capture evidence**
+**Step 3: evidence を記録する**
 
-Record:
-- selected canonical customer ID/name
-- whether `Customer_Alias_Map` was updated
-- whether `Feedback` gained/resolved the row
-- whether `Exceptions_FeedbackMatch` shrank by 1
+次を記録する:
+- 選択した canonical customer ID/name
+- `Customer_Alias_Map` が更新されたか
+- `Feedback` に row が追加 / 解決されたか
+- `Exceptions_FeedbackMatch` が 1 件減ったか
 
-**Step 4: Update status docs**
+**Step 4: status docs を更新する**
 
-After success, update:
+成功後、次を更新する:
 - `FEEDBACK_PIPELINE_STATUS.md`
 - `docs/backlog.md`
 - `agents/session.md`
 
 Expected status change:
-- P-003 moves from Next Up to completed or near-complete
-- unmatched feedback count decreases if the mapping was valid
+- P-003 は Next Up から completed または near-complete に移動する
+- mapping が妥当なら unmatched feedback count が減少する
 
 ---
 
-## Task 6: Define fallback policy clearly
+## Task 6: fallback policy を明確に定義する
 
-**Objective:** Keep the Python bridge available without letting it become the default operating path.
+**Objective:** Python bridge を利用可能なまま残しつつ、それが標準運用経路にならないようにする。
 
 **Files:**
 - Modify: `FEEDBACK_PIPELINE_STATUS.md`
 - Modify: `OPERATIONS_MANUAL.md`
 - Optional modify: `README.md`
 
-**Step 1: State the primary path**
+**Step 1: primary path を明示する**
 
 Primary path:
 - CS workbook input
 - GAS writeback
 - GAS republish
 
-**Step 2: State the fallback path**
+**Step 2: fallback path を明示する**
 
 Fallback only:
 ```bash
 python /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/reconcile_feedback_aliases.py --apply
 ```
 
-Use fallback only when:
-- GAS is unavailable
-- emergency recovery is needed
-- manual reconciliation must be replayed outside Apps Script
+Fallback を使うのは次の場合のみ:
+- GAS が利用不能
+- 緊急リカバリが必要
+- Apps Script 外で manual reconciliation を再適用しなければならない
 
 **Step 3: Verification**
 
-Check that all docs describe the same hierarchy:
+すべての docs が同じ hierarchy を説明していることを確認する:
 - GAS-first
 - Python bridge second
 
@@ -291,26 +291,26 @@ cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex/potex-gas && npm run build
 ```
 
 Manual acceptance checklist:
-- `CS_別名解決入力` shows unresolved customer rows only
-- operator-editable columns are clearly documented
-- `runWritebackCollection()` processes valid decisions only
-- resolved alias decisions update DB-side sheets correctly
-- republish removes or clears resolved queue rows consistently
-- docs now describe the exact operator loop
+- `CS_別名解決入力` には unresolved customer row のみが表示される
+- operator-editable column が明確に文書化されている
+- `runWritebackCollection()` は妥当な decision だけを処理する
+- resolved 済み alias decision が DB 側 sheet を正しく更新する
+- republish により resolved queue row が一貫して除去またはクリアされる
+- docs が正確な operator loop を説明している
 
 ---
 
 ## Suggested execution order
-1. Task 1 — freeze interface contract
-2. Task 2 — document the operator loop
-3. Task 3 — harden validation
-4. Task 4 — verify republish behavior
-5. Task 5 — run one real acceptance test
-6. Task 6 — lock fallback policy
+1. Task 1 — interface contract を固定する
+2. Task 2 — operator loop を文書化する
+3. Task 3 — validation を harden する
+4. Task 4 — republish behavior を検証する
+5. Task 5 — 実データで 1 件の acceptance test を行う
+6. Task 6 — fallback policy を固定する
 
 ## Definition of done
-P-003 is done when:
-- a CS operator can resolve an unmatched customer through spreadsheet input alone
-- GAS writes the result back safely
-- DB and CS sheets converge after republish
-- the process is documented well enough to repeat without tribal knowledge
+P-003 が done になる条件:
+- CS operator が spreadsheet input だけで unmatched customer を解決できる
+- GAS がその結果を安全に書き戻す
+- republish 後に DB と CS sheet の状態が収束する
+- 属人的な知識なしで再実行できる程度に十分文書化されている

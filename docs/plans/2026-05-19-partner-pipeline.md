@@ -1,266 +1,266 @@
-# Partner Pipeline (Inai / Sato) Spec Plan
+# Partner Pipeline（Inai / Sato）仕様計画
 
-> **Status:** Q1–Q7 answered on 2026-05-21. **Implementation-ready for Phase A** (canonical schema groundwork).
+> **Status:** Q1–Q7 は 2026-05-21 に回答済み。**Phase A**（canonical schema の土台整備）は実装着手可能。
 
-**Goal:** Provide structured, systematic tracking of the student-domain (稲井) and career-change/job-hunt-domain (佐藤) partner pipelines from the form-reservation stage onward, including partner-self-input of meeting / recruitment / POTEX-sale status. Make this the first canonical home for post-meeting partner status, which today exists only as free-text in Slack / LStep.
+**Goal:** フォーム予約段階以降の student 領域（稲井）および career-change/job-hunt 領域（佐藤）の partner pipeline を、partner 自身による meeting / recruitment / POTEX-sale status 入力も含めて、構造化かつ継続的に追跡できるようにする。現在は Slack / LStep の free-text にしか存在しない面談後 status の、最初の canonical 管理先にする。
 
-**Architecture:** Keep `POTEX DB` as the only canonical database. LStep / TimeRex / Slack are NOT read. **Do not create a separate partner canonical model**; instead, extend the existing coach canonical so partner-assignees are represented in `Coaches` / `Customer_Coach_Assignments` with role/scope columns, and only the post-assignment workflow/views differ.
+**Architecture:** canonical database は `POTEX DB` のみを維持する。LStep / TimeRex / Slack は読み取らない。**partner 専用の別 canonical model は作成しない。** 既存の coach canonical を拡張し、partner assignee も `Coaches` / `Customer_Coach_Assignments` で role/scope column により表現する。違いは assignment 後の workflow / view のみとする。
 
-**Tech Stack:** Google Sheets, Apps Script (`potex-gas`), existing writeback collection trigger (30m).
-
----
-
-## 1. Background
-
-### 1.1. Operational team request (paraphrased)
-- 稲井 = 인재회사 사장. 담당: 학생. 장기 인턴 소개 → 취직까지 동반하는 수업 운영. POTEX 상품을 학생에게 대리 판매하는 구조 (인턴 수입 → 코칭 지불 능력 향상 funnel).
-- 佐藤 = 담당: 전직 희망자 + 대학 3-4학년 취준생. 인재 소개 + POTEX 상품 양쪽 다 다룸.
-- 추적 컬럼 공통: 누가 누구에게 assigned / POTEX 상품 소개·판매 여부 / 영역별 진행 상태 / 최종 갱신일.
-- 추적 시작 시점: **고객 전(面談 실시 단계)부터.** LINE 등록 → 직접 佐藤·稲井 assign → 코칭 판매 시도 → (성·불성 무관) 인턴·전직 상담 재면담.
-- 파트너 본인이 정기적으로 입력 가능해야 함.
-
-### 1.2. Verified upstream flow (운영팀 답변, 2026-05-19)
-1. YouTube 유입
-2. LINE 등록
-3. Form 예약 (여기서 학생 여부 판별) ← **여기부터 list 추가 시작**
-4. 佐藤 / 稲井 assignment → **카렌더에 들어감, assign 주체는 CS**
-5. 초회 면담 실시 → **면담 중 사용 도구 없음**
-6. 결과 기록 → **영업이 Slack 보고 → CS가 LStep 기재** (free-text)
-
-### 1.3. Why this matters architecturally
-- 단계 6의 산출물(인턴 연결 여부, POTEX 상품 sale 여부, recruitment 진행 상태)이 **시스템에 구조화돼 존재하지 않음**.
-- 단계 4의 assignment trigger는 캘린더(TimeRex 추정). CLAUDE.md TimeRex 보류 원칙에 따라 캘린더 API 직접 읽기는 막혀 있음.
-- 결론: **partner canonical은 별도로 만들지 않는다.** CS의 assignment 입력은 coach/partner를 나누지 않고 1회로 통합하고, canonical도 `Coaches` / `Customer_Coach_Assignments`를 확장해 `assignee_kind` / `assignee_scope` 같은 컬럼으로 partner 여부를 표현한다. 즉 데이터 모델도 운영 UX도 모두 단일 assignment 축으로 유지하고, 배정 이후의 workflow/view만 분기한다.
+**Tech Stack:** Google Sheets、Apps Script（`potex-gas`）、既存の writeback collection trigger（30 分間隔）。
 
 ---
 
-## 2. Out of scope (intentional)
+## 1. 背景
+
+### 1.1. 運用チームの要望（要約）
+- 稲井 = 人材会社の社長。担当領域は学生。長期インターン紹介から就職まで伴走する授業を運営している。POTEX 商品を学生に代理販売する構造で、インターン収入によりコーチング支払い能力が高まる funnel を持つ。
+- 佐藤 = 転職希望者および大学 3〜4 年生の就活生を担当。人材紹介と POTEX 商品の両方を扱う。
+- 共通で追跡したい column: 誰が誰を assigned したか / POTEX 商品の紹介・販売状況 / 領域別の進行 status / 最終更新日。
+- 追跡開始時点: **顧客化前（面談実施段階）から。** LINE 登録 → 佐藤・稲井へ直接 assign → コーチング販売を試行 → 成否に関係なくインターン・転職相談の再面談へ進む。
+- partner 本人が定期的に入力できる必要がある。
+
+### 1.2. 確認済み upstream flow（運用チーム回答、2026-05-19）
+1. YouTube 流入
+2. LINE 登録
+3. Form 予約（ここで学生かどうかを判定） ← **この段階から list 追加を開始**
+4. 佐藤 / 稲井 assignment → **カレンダーに入る。assign の主体は CS**
+5. 初回面談実施 → **面談中に使用する専用ツールはない**
+6. 結果記録 → **営業が Slack に報告し、CS が LStep に記入**（free-text）
+
+### 1.3. これがアーキテクチャ上重要な理由
+- ステップ 6 の成果物（インターン接続の有無、POTEX 商品 sale の有無、recruitment の進行状況）が、**構造化された形で system に存在していない。**
+- ステップ 4 の assignment trigger は calendar（TimeRex 想定）。CLAUDE.md の TimeRex 保留原則により、calendar API の直接読取は不可。
+- 結論: **partner canonical は別に作らない。** CS の assignment 入力は coach / partner を分けず 1 回で統合し、canonical も `Coaches` / `Customer_Coach_Assignments` を拡張して `assignee_kind` / `assignee_scope` などの column で partner を表現する。つまり、データ model も運用 UX も単一 assignment 軸で維持し、配属後の workflow / view のみ分岐させる。
+
+---
+
+## 2. 対象外（意図的に除外）
 
 - LStep API / webhook / writeback
-- TimeRex API / 캘린더 자동 읽기
-- Slack 보고 자동 ingest
-- 영업이 Slack에 적는 free-text를 구조화 파싱
-- 稲井/佐藤 외 partner 확장 (학생 이외 영역 다른 영업멤버 assign 등은 동일 패턴 재사용으로 후속)
+- TimeRex API / calendar 自動読取
+- Slack 報告の自動 ingest
+- 営業が Slack に書く free-text の構造化 parser
+- 稲井 / 佐藤以外の partner への拡張（学生以外の領域で他営業 member を assign するケースなどは、同一 pattern の後続対応とする）
 
 ---
 
-## 3. Proposed canonical DB additions
+## 3. 提案する canonical DB 追加
 
-모든 신규 시트는 `POTEX DB` 에 추가. 다른 워크북은 read-only 표시 / filtered view / writeback input 만.
+すべての新規シートは `POTEX DB` に追加する。他 workbook は read-only 表示 / filtered view / writeback input のみとする。
 
-### 3.1. `Coaches` 확장 (partner 포함)
-Partner roster. `Coaches`와 평행 구조.
+### 3.1. `Coaches` の拡張（partner を含める）
+partner roster を `Coaches` に統合する。
 
 | column | type | note |
 |---|---|---|
 | `partner_id` | string | `PART-XXXX` |
-| `partner_name` | string | 정규화된 이름 (예: `稲井`, `佐藤` — customer `佐藤知子` 와 동명이인 주의, alias 분리) |
+| `partner_name` | string | 正規化された名前（例: `稲井`, `佐藤` — customer `佐藤知子` との同名に注意し、alias を分離） |
 | `partner_scope` | enum | `student` / `career_change_and_job_hunt` / `other` |
-| `external_role` | string | `稲井: 人材会社社長 + 長期インターン伴走授業` 등 free-text |
-| `is_active` | bool | |
-| `created_at` | iso8601 | |
-| `last_updated_at` | iso8601 | |
+| `external_role` | string | `稲井: 人材会社社長 + 長期インターン伴走授業` などの free-text |
+| `is_active` | bool |  |
+| `created_at` | iso8601 |  |
+| `last_updated_at` | iso8601 |  |
 
-### 3.2. `Coach_Alias_Map` 확장 (partner alias 포함)
-`Coach_Alias_Map`과 평행. 영업 보고 / form 응답에서 들어오는 이름 변형 흡수.
+### 3.2. `Coach_Alias_Map` の拡張（partner alias を含める）
+`Coach_Alias_Map` を拡張し、営業報告や form 応答から入る名前ゆれを吸収する。
 
 | column | note |
 |---|---|
-| `raw_name` | |
-| `canonical_partner_id` | |
-| `source` | `cs_partner_assignment_input` / `seed` 등 |
-| `approved_at` | |
+| `raw_name` |  |
+| `canonical_partner_id` |  |
+| `source` | `cs_partner_assignment_input` / `seed` など |
+| `approved_at` |  |
 
-### 3.3. `Customer_Coach_Assignments` 확장 (partner assignment 포함)
-기존 `Customer_Coach_Assignments`를 재사용하되, **customer 이전 단계(form respondent)도 포함**할 수 있게 `lead_id` 개념을 확장한다. 추가로 `assignee_kind=coach|partner`, `assignee_scope=student|career_change_and_job_hunt|core_coaching` 같은 구분 컬럼을 둔다.
+### 3.3. `Customer_Coach_Assignments` の拡張（partner assignment を含める）
+既存の `Customer_Coach_Assignments` を再利用しつつ、**customer 化前の段階（form respondent）も含められるよう** `lead_id` 概念を拡張する。さらに `assignee_kind=coach|partner`、`assignee_scope=student|career_change_and_job_hunt|core_coaching` などの区分 column を持たせる。
 
 | column | note |
 |---|---|
 | `assignment_id` | `PA-XXXX` |
-| `lead_id` | customer_id가 있으면 customer_id, 없으면 form-seeded lead-only id (`LEAD-XXXX`) |
-| `customer_id` | nullable. customer 승격 시 채워짐 |
-| `partner_id` | |
-| `assigned_at` | |
-| `assignment_source` | `cs_partner_assignment_input` / `customer_form_default` 등 |
-| `is_active` | bool. 해제 시 false |
+| `lead_id` | `customer_id` があればそれを使い、なければ form 起点の lead-only id（`LEAD-XXXX`） |
+| `customer_id` | nullable。customer へ昇格した時点で埋める |
+| `partner_id` |  |
+| `assigned_at` |  |
+| `assignment_source` | `cs_partner_assignment_input` / `customer_form_default` など |
+| `is_active` | bool。解除時は false |
 | `assignment_note` | free-text |
 
-> **결정 필요:** `Leads` 별도 테이블을 만들지, 아니면 `Customers` 시트에 `is_lead_only=true` 컬럼을 추가할지 (Section 7 참고).
+> **要判断:** `Leads` を別 table にするか、`Customers` シートに `is_lead_only=true` column を追加するか（Section 7 参照）。
 
-### 3.4. post-assignment status 표 (필요 시 별도, owner는 coach/partner 공용)
-Partner self-input의 결과가 누적되는 canonical status snapshot. 1 lead × 1 partner 당 1행 (assignment과 1:1).
+### 3.4. post-assignment status 表（必要なら別表、owner は coach/partner 共通）
+partner self-input の結果を蓄積する canonical status snapshot。1 lead × 1 partner あたり 1 行（assignment と 1:1）。
 
 | column | type | note |
 |---|---|---|
 | `status_id` | string | `PS-XXXX` |
-| `assignment_id` | string | FK to extended `Customer_Coach_Assignments` |
-| `lead_id` | string | denormalized for query speed |
+| `assignment_id` | string | 拡張済み `Customer_Coach_Assignments` への FK |
+| `lead_id` | string | query を速くするための denormalized column |
 | `partner_id` | string | denormalized |
 | `meeting_status` | enum | `scheduled` / `done` / `no_show` / `cancelled` |
 | `meeting_done_at` | iso8601 | nullable |
 | `potex_intro_status` | enum | `not_introduced` / `introduced` / `declined` |
 | `potex_sale_status` | enum | `none` / `in_discussion` / `contracted` / `paid` / `lost` |
 | `recruitment_status` | enum | `none` / `intern_intro` / `intern_active` / `selection` / `closed` / `lost` / `unreachable` |
-| `current_state_label` | string | partner가 자유롭게 적는 한 줄 요약 (UI 표시용) |
-| `partner_note` | free-text | |
-| `last_updated_at` | iso8601 | partner가 입력할 때 갱신 |
+| `current_state_label` | string | partner が自由入力する 1 行要約（UI 表示用） |
+| `partner_note` | free-text |  |
+| `last_updated_at` | iso8601 | partner が入力したタイミングで更新 |
 | `last_updated_by` | enum | `partner` / `cs` / `system` |
 
-> **결정 필요:** `potex_sale_status`가 `contracted`/`paid` 인 경우 canonical `Plans`/`Payments`와 어떻게 정합 맞출지 (Section 7 참고).
+> **要判断:** `potex_sale_status` が `contracted` / `paid` の場合に、canonical `Plans` / `Payments` とどう整合させるか（Section 7 参照）。
 
-### 3.5. `ConversionHistory` event 확장 (검토)
-현재: `line_registered` → `lead_created` → `experience_scheduled` → `contracted` → `paid` → `completed` / `lost`
+### 3.5. `ConversionHistory` event の拡張（検討事項）
+現在: `line_registered` → `lead_created` → `experience_scheduled` → `contracted` → `paid` → `completed` / `lost`
 
-추가 검토:
-- `partner_assigned` — extended `Customer_Coach_Assignments`에서 `assignee_kind=partner` row의 assigned_at 기준 event 발행
-- `partner_meeting_done` — Partner_Pipeline_Status.meeting_done_at 기준
-- `intern_placed` — recruitment_status가 `intern_active`로 전이될 때
-- `career_consultation_started` — recruitment_status가 `selection` 진입 시
+追加候補:
+- `partner_assigned` — 拡張 `Customer_Coach_Assignments` の `assignee_kind=partner` row の `assigned_at` を基準に event 発行
+- `partner_meeting_done` — Partner_Pipeline_Status.meeting_done_at を基準
+- `intern_placed` — recruitment_status が `intern_active` に遷移したとき
+- `career_consultation_started` — recruitment_status が `selection` に入ったとき
 
-> **원칙 충돌 주의:** DB 중복 derive-only 금지 원칙상, `Partner_Pipeline_Status`가 이미 있다면 `ConversionHistory` 추가는 publish 시점 derive로 충분할 수 있음. 굳이 추가할지는 dashboard 요구사항 확정 후 결정.
+> **原則衝突に注意:** DB の derive-only 重複禁止原則に従うと、`Partner_Pipeline_Status` が既に存在するなら `ConversionHistory` の追加は publish 時 derive で足りる可能性がある。追加するかどうかは dashboard 要件確定後に決める。
 
 ---
 
-## 4. New role workbooks
+## 4. 新しい role workbook
 
-### 4.1. `Potex Inai` (학생 영역 assignee workbook/view)
-역할: 표시 + partner 입력.
+### 4.1. `Potex Inai`（学生領域 assignee workbook/view）
+役割: 表示 + partner 入力。
 
-탭:
-- `Inai_README` — 사용법 (입력해야 할 컬럼, 입력 주기, 헷갈리면 누구에게 물어볼지)
-- `Inai_Assigned_Leads` (read-only) — 현재 active assignment 목록. partner_id=稲井 인 row. 다음 컬럼 노출:
+タブ:
+- `Inai_README` — 利用方法（入力すべき column、入力頻度、迷った場合の問い合わせ先）
+- `Inai_Assigned_Leads`（read-only）— 現在の active assignment 一覧。partner_id=稲井 の row を表示。公開 column は次の通り:
   - `lead_id`, `display_name`, `assigned_at`, `meeting_status`, `current_state_label`, `recruitment_status`, `potex_intro_status`, `potex_sale_status`, `last_updated_at`
-- `Inai_Status_Input` (partner write) — assignment_id 기준 status 갱신. 입력 컬럼:
-  - `assignment_id` (drop-down or lookup), `meeting_status`, `meeting_done_at`, `potex_intro_status`, `potex_sale_status`, `recruitment_status`, `current_state_label`, `partner_note`, `submit=TRUE` 체크
-- `Inai_Data_Health` (read-only) — assignment 수, last_updated_at 분포 (예: 30일 이상 미갱신 N건), state 분포
+- `Inai_Status_Input`（partner write）— `assignment_id` 基準で status を更新。入力 column:
+  - `assignment_id`（drop-down または lookup）, `meeting_status`, `meeting_done_at`, `potex_intro_status`, `potex_sale_status`, `recruitment_status`, `current_state_label`, `partner_note`, `submit=TRUE` チェック
+- `Inai_Data_Health`（read-only）— assignment 数、`last_updated_at` 分布（例: 30 日以上未更新 N 件）、state 分布
 
-### 4.2. `Potex Sato` (전직·취준 영역 assignee workbook/view)
-동일 구조. partner_id=佐藤 필터.
+### 4.2. `Potex Sato`（転職・就活領域 assignee workbook/view）
+同一構成。partner_id=佐藤 で filter する。
 
-### 4.3. 대안: 단일 `Potex Partners` workbook 2-tab 구조
-운영 단순화 측면에서 단일 workbook 안에 `Inai_*` / `Sato_*` 탭을 두는 안. 단점: 두 파트너가 서로의 status를 볼 수 있음 (정보 격리 요구가 있는지 Section 7 질문).
+### 4.3. 代替案: 単一 `Potex Partners` workbook の 2-tab 構成
+運用を簡素化するため、単一 workbook の中に `Inai_*` / `Sato_*` タブを置く案。欠点: 2 人の partner が互いの status を閲覧できる（情報分離要件があるかは Section 7 の質問で確認）。
 
 ---
 
-## 5. CS-side input
+## 5. CS 側入力
 
-### 5.1. `CS_担当割当入力` (통합안, Potex CS workbook)
-CS가 form respondent / customer를 **담당자 1회 배정**하는 입력. 여기서 담당자는 coach 또는 partner일 수 있다. 운영 공수 절감을 위해 `CS_別名解決入力`와 같은 input 패턴을 쓰되, **coach 배정과 partner 배정을 별도 탭/별도 행으로 두지 않는다.**
+### 5.1. `CS_担当割当入力`（統合案、Potex CS workbook）
+CS が form respondent / customer を **担当者として 1 回だけ割り当てる**ための入力。ここでの担当者は coach または partner のいずれでもよい。運用工数削減のため `CS_別名解決入力` と同様の input pattern を使い、**coach 割当と partner 割当を別タブ・別行にはしない。**
 
 | column | note |
 |---|---|
-| `lead_id` 또는 `form_response_row_ref` | |
+| `lead_id` または `form_response_row_ref` |  |
 | `assignee_type` | `coach` / `partner` |
-| `assignee_name` | coach 이름 또는 `稲井` / `佐藤` |
-| `assignment_note` | |
+| `assignee_name` | coach 名、または `稲井` / `佐藤` |
+| `assignment_note` |  |
 | `operator_decision_status` | `approve` / `discard` |
-| `operator_decision_at` | |
-| `sync_status` | `pending` / `processed` / `error_*` (system) |
+| `operator_decision_at` |  |
+| `sync_status` | `pending` / `processed` / `error_*`（system） |
 
-writeback collection (30m 주기)이 picks up → 항상 **확장된 `Customer_Coach_Assignments`** 로 upsert하고, `assignee_type`/`assignee_scope` 값으로 downstream view를 나눈다.
+writeback collection（30 分間隔）がこれを取り込み、常に **拡張済み `Customer_Coach_Assignments`** へ upsert する。downstream view の分岐は `assignee_type` / `assignee_scope` の値で行う。
 
-**운영 원칙:** CS는 배정 사실을 한 번만 입력한다. partner 관여 lead라도 별도 partner-assignment canonical을 만들지 않는다.
+**運用原則:** CS は割当事実を 1 回だけ入力する。partner が関与する lead でも、別個の partner-assignment canonical は作成しない。
 
-### 5.2. Form respondent → lead 시드
-- `フォームの回答` ingest에서 학생 여부 판별 → `is_lead_only=true` Customer (or Lead) 자동 생성
-- `CS_Partner_Assignment_Input`에서 CS가 partner 할당
-- partner workbook에 row 등장
+### 5.2. Form respondent → lead seed
+- `フォームの回答` ingest で学生かどうかを判定し、`is_lead_only=true` の Customer（または Lead）を自動生成
+- `CS_Partner_Assignment_Input` で CS が partner を割り当て
+- partner workbook に row が表示される
 
 ---
 
 ## 6. Writeback chain
 
-`CS_Partner_Assignment_Input` 처리 (기존 patterns):
-1. 30m writeback trigger → `collectCsWritebackRows`
-2. approve이면 extended `Customer_Coach_Assignments` upsert + 필요 시 `Coach_Alias_Map` 갱신
-3. `Customer_Alias_Map` 패턴과 동일하게 assignment source 기록
-4. canonical refresh → publish all (5-workbook)
+`CS_Partner_Assignment_Input` の処理（既存 pattern）:
+1. 30 分 writeback trigger → `collectCsWritebackRows`
+2. `approve` の場合、拡張済み `Customer_Coach_Assignments` を upsert し、必要なら `Coach_Alias_Map` を更新
+3. `Customer_Alias_Map` と同様に assignment source を記録
+4. canonical refresh → publish all（5-workbook）
 
-`*_Status_Input` (partner workbook) 처리 (신규 writeback path):
-1. 30m writeback trigger → 신규 `collectPartnerStatusWritebackRows`
-2. submit=TRUE row 만 처리. partner_id는 workbook 자체에 고정 binding (입력자 위조 방지)
-3. post-assignment status 표(또는 같은 표의 status columns) upsert, `last_updated_by=partner`, `last_updated_at=now`
-4. sync_status=`processed` 마킹
-5. canonical refresh + republish (chain은 기존 `runWritebackCollection`에 통합)
-
----
-
-## 7. Decisions captured (운영팀 답변 반영)
-
-### Q1. Lead 식별 단위 — **답변 확정**
-- **운영 결정:** 추적 시작은 **form 예약부터**. 다만 향후 LINE linkage 가능성은 열어둔다.
-- **설계 반영:** Phase A/B에서는 LINE 등록 전체를 partner pipeline에 넣지 않는다. `フォームの回答` 기준 lead seed를 생성하고, 나중에 필요 시 `lead_id -> line_registration_id` 연결 컬럼/lookup을 additive하게 붙일 수 있게 설계한다.
-- **구현 결정:** 별도 `Leads` 테이블까지는 아직 가지 않고, `Customer_Partner_Assignments.lead_id`는 `customer_id` 또는 form-seeded provisional id를 담는 방식으로 시작한다. customer-only surface에 `is_lead_only` 필터를 강제하는 전면 cutover는 현 시점 scope 밖.
-
-### Q2. POTEX 상품 sale status 정합 — **답변 확정**
-- **운영 결정:** 계약/입금의 정본은 기존 `Plans` / `Payments`.
-- **설계 반영:** partner 쪽 status는 partner-perspective progress까지만 담는다. canonical sale fact는 절대 partner workbook 입력을 정본으로 삼지 않는다.
-- **구현 결정:** `potex_sale_status` enum은 `none` / `introduced` / `in_discussion` / `lost` 정도의 lightweight 상태로 시작하고, `contracted` / `paid`는 partner 입력 enum에서 제외한다. 필요하면 publish view에서 `Plans` / `Payments` join 결과를 별도 read-only 컬럼으로 노출한다.
-
-### Q3. Recruitment status enum 합의 — **답변 확정**
-- **운영 결정:** 우선 구현하고, 나중에 수정 가능하게 한다.
-- **설계 반영:** enum은 초기에 최소 집합으로 시작하되, sheets validation / publish mapping / writeback parser가 additive change에 강하도록 만든다.
-- **초기 enum 제안:** `none`, `intern_intro`, `intern_active`, `selection`, `closed`, `lost`, `unreachable`.
-- **구현 원칙:** enum 변경이 필요할 때 DB migration 없이 dropdown / validation / display label만 추가 수정하면 되도록 설계한다.
-
-### Q4. Partner 정보 격리 — **답변 확정**
-- **운영 결정:** workbook 분리.
-- **설계 반영:** partner 전용 canonical은 폐기하되, partner-facing workbook/view는 유지 가능하다. 즉 canonical은 `Coaches` 축으로 통합하고, publish surface만 `Potex Inai` / `Potex Sato`로 분리한다.
-
-### Q5. CS 보고/LStep 기재와 partner self-input 책임 분기 — **답변 확정**
-- **운영 결정:** partner 주입력 + CS 예외적 보완.
-- **설계 반영:** 기본 write path는 partner-facing workbook/view의 status input. 다만 canonical owner table은 `Coaches` 축 단일 모델을 유지한다.
-- **구현 순서:** 첫 슬라이스에서는 `last_updated_by`에 `partner` / `cs`를 남길 수 있게 하고, CS override 전용 탭은 후속 Phase C+에서 추가 여부를 결정한다.
-
-### Q6. CS assignment 운영 방식 — **수정 결정**
-- **운영 결정:** CS 입장에서는 coach 배정과 partner 배정을 **같은 assignment 행위**로 본다. 따라서 입력 레이어는 통합하고, 담당자 유형만 구분한다.
-- **의미:** 캘린더/Slack/LStep를 보며 CS가 구조화 입력을 남길 때, 같은 lead에 대해 coach와 partner를 따로 관리하면 이중 공수가 발생한다. 이를 피하기 위해 CS는 **한 번의 담당자 배정 입력**만 남기고, 그 결과가 downstream에서 coach canonical / partner canonical로 갈라진다.
-- **설계 반영:** `CS_Partner_Assignment_Input` 단독 운영은 폐기 방향. 최종 운영안은 `CS_担当割当入力` 통합 surface + `Coaches` 축 단일 canonical이다. 최소 컬럼은 `lead_id(or response key)`, `assignee_type`, `assignee_name`, `assignment_note`, `operator_decision_status`, `sync_status`.
-
-### Q7. 입력 빈도 / SLA — **답변 확정**
-- **운영 결정:** stale/no-update 경고는 **CS + partner 본인**에게 보이게 한다.
-- **설계 반영:** `Inai_Data_Health` / `Sato_Data_Health`와 `Potex CS` 쪽 monitor 양쪽에 stale count를 노출한다.
-- **보류:** 정확한 SLA 문구(예: 주1회 / 면담 직후)는 후속 운영 문구에서 확정하되, 구조상 `30일 이상 미갱신` warning은 바로 넣을 수 있게 한다.
+`*_Status_Input`（partner workbook）の処理（新規 writeback path）:
+1. 30 分 writeback trigger → 新規 `collectPartnerStatusWritebackRows`
+2. `submit=TRUE` row のみ処理。partner_id は workbook 自体に固定 binding し、入力者の偽装を防ぐ
+3. post-assignment status 表（または同じ表の status columns）を upsert し、`last_updated_by=partner`、`last_updated_at=now` を設定
+4. `sync_status=processed` を付与
+5. canonical refresh + republish（chain は既存 `runWritebackCollection` に統合）
 
 ---
 
-## 8. Implementation phasing (open questions 닫힌 후)
+## 7. 決定事項（運用チーム回答反映）
 
-### Phase A: canonical 스키마만 (no UI)
-- `Coaches` schema 확장 (`assignee_kind`, `assignee_scope`, `external_role` 등)
-- `Customer_Coach_Assignments` schema 확장 (`lead_id`, partner-compatible metadata)
-- 稲井 / 佐藤를 `Coaches` seed row로 편입
-- 기존 `canonical/partners.ts`는 제거 또는 `coaches` 쪽 migration helper로 흡수
+### Q1. Lead 識別単位 — **確定**
+- **運用決定:** 追跡開始は **form 予約から**。ただし将来的な LINE linkage の可能性は残す。
+- **設計反映:** Phase A/B では LINE 登録全体を partner pipeline に含めない。`フォームの回答` を基準に lead seed を生成し、後から必要になれば `lead_id -> line_registration_id` の接続 column / lookup を additive に追加できる設計にする。
+- **実装決定:** まだ別 `Leads` table は作らず、`Customer_Partner_Assignments.lead_id` に `customer_id` または form 起点の provisional id を入れる方式で開始する。customer-only surface に `is_lead_only` filter を強制する全面 cutover は現時点では scope 外。
+
+### Q2. POTEX 商品 sale status の整合性 — **確定**
+- **運用決定:** 契約 / 入金の正本は既存の `Plans` / `Payments`。
+- **設計反映:** partner 側 status は partner 視点の進捗までに限定する。canonical sale fact の正本として partner workbook 入力を使わない。
+- **実装決定:** `potex_sale_status` enum は `none` / `introduced` / `in_discussion` / `lost` などの lightweight 状態で開始し、`contracted` / `paid` は partner 入力 enum から除外する。必要なら publish view で `Plans` / `Payments` の join 結果を別の read-only column として表示する。
+
+### Q3. Recruitment status enum 合意 — **確定**
+- **運用決定:** まず実装し、後で修正可能にする。
+- **設計反映:** enum は初期段階では最小集合で開始するが、sheets validation / publish mapping / writeback parser が additive change に強いように設計する。
+- **初期 enum 提案:** `none`, `intern_intro`, `intern_active`, `selection`, `closed`, `lost`, `unreachable`。
+- **実装原則:** enum 変更が必要になっても、DB migration なしで dropdown / validation / display label だけを追加・修正できる構成にする。
+
+### Q4. Partner 情報分離 — **確定**
+- **運用決定:** workbook を分離する。
+- **設計反映:** partner 専用 canonical は廃止するが、partner-facing workbook / view は維持できる。つまり canonical は `Coaches` 軸に統合し、publish surface のみ `Potex Inai` / `Potex Sato` に分ける。
+
+### Q5. CS 報告 / LStep 記入と partner self-input の責務分岐 — **確定**
+- **運用決定:** partner 主入力 + CS が例外的に補完。
+- **設計反映:** 基本 write path は partner-facing workbook / view の status input とする。ただし canonical owner table は `Coaches` 軸の単一 model を維持する。
+- **実装順序:** 最初の slice では `last_updated_by` に `partner` / `cs` を記録できるようにし、CS override 専用タブは後続 Phase C+ で追加要否を判断する。
+
+### Q6. CS assignment の運用方式 — **修正決定**
+- **運用決定:** CS から見れば、coach 割当と partner 割当は **同じ assignment 行為**。したがって入力 layer は統合し、担当者タイプだけを区別する。
+- **意味:** calendar / Slack / LStep を見ながら CS が構造化入力を残す際、同じ lead に対して coach と partner を別管理すると二重工数になる。これを避けるため、CS は **1 回の担当者割当入力**だけを行い、その結果が downstream で coach canonical / partner canonical に分岐する。
+- **設計反映:** `CS_Partner_Assignment_Input` 単独運用は廃止方向。最終運用案は `CS_担当割当入力` の統合 surface + `Coaches` 軸の単一 canonical。最小 column は `lead_id(or response key)`, `assignee_type`, `assignee_name`, `assignment_note`, `operator_decision_status`, `sync_status`。
+
+### Q7. 入力頻度 / SLA — **確定**
+- **運用決定:** stale / no-update 警告は **CS と partner 本人**の双方に見えるようにする。
+- **設計反映:** `Inai_Data_Health` / `Sato_Data_Health` と `Potex CS` 側 monitor の両方に stale count を表示する。
+- **保留:** 正確な SLA 文言（例: 週 1 回 / 面談直後）は後続の運用文言で確定するが、構造としては `30日以上未更新` warning をすぐに入れられるようにする。
+
+---
+
+## 8. 実装フェーズ（open question 解消後）
+
+### Phase A: canonical schema のみ（UI なし）
+- `Coaches` schema 拡張（`assignee_kind`, `assignee_scope`, `external_role` など）
+- `Customer_Coach_Assignments` schema 拡張（`lead_id`, partner 互換 metadata）
+- 稲井 / 佐藤 を `Coaches` の seed row に追加
+- 既存 `canonical/partners.ts` は削除、または `coaches` 側の migration helper として吸収
 
 ### Phase B: CS assignment input
-- `CS_担当割当入力` 통합 탭
-- writeback은 항상 extended `Customer_Coach_Assignments`로 upsert
+- `CS_担当割当入力` 統合タブ
+- writeback は常に拡張済み `Customer_Coach_Assignments` へ upsert
 - form respondent → lead seed flow
 
 ### Phase C: partner-facing workbooks/views
-- `Potex Inai` / `Potex Sato` provisioning
-- publish (`Inai_Assigned_Leads`, `Inai_Status_Input`, `Inai_Data_Health`)
-- status writeback은 assignee_kind=partner row를 대상으로 동작
+- `Potex Inai` / `Potex Sato` の provisioning
+- publish（`Inai_Assigned_Leads`, `Inai_Status_Input`, `Inai_Data_Health`）
+- status writeback は assignee_kind=partner の row を対象に動作
 
-### Phase D: dashboard / event 확장
-- `ConversionHistory` partner-related event 추가 (Q2 결정 따라)
-- `経営_データ状況` / `コンシェルジュ_データ状況`에 partner pipeline 지표 노출
+### Phase D: dashboard / event 拡張
+- `ConversionHistory` に partner 関連 event を追加（Q2 の決定に応じて）
+- `経営_データ状況` / `コンシェルジュ_データ状況` に partner pipeline 指標を表示
 
-각 phase 끝에 inspect script로 verdict 확보 → backlog 갱신.
+各 phase の最後に inspect script で verdict を取得し、backlog を更新する。
 
 ---
 
-## 9. Risks
+## 9. リスク
 
-- **partner 입력 누락** → status 영원히 stale. Q5 / Q7 합의로 완화.
-- **lead vs customer 모델 분기** → 잘못 설계하면 `Customers` 쿼리 전체에 필터 부담. Q1 결정 중요.
-- **이름 충돌** → 기존 customer `佐藤知子` 와 assignee `佐藤` 동명이인 위험. 그러나 별도 partner table 대신 `Coaches` 내부에서 `coach_id`/`assignee_kind`로 식별하면 충돌 없이 운영 가능.
-- **TimeRex / LStep 우회의 한계** — CS가 어디서 assignment 정보를 보고 input 시트에 적는지 (form 응답 직접 보고? Slack? LStep?). 만약 LStep을 보면서 적는다면 LStep 의존이 새는 거임. Q5와 함께 확인.
+- **partner 入力漏れ** → status が永続的に stale になる。Q5 / Q7 の合意で緩和。
+- **lead と customer の model 分岐** → 設計を誤ると `Customers` query 全体に filter 負荷がかかる。Q1 の決定が重要。
+- **名前衝突** → 既存 customer `佐藤知子` と assignee `佐藤` の同名リスク。ただし別 partner table を作らず `Coaches` 内で `coach_id` / `assignee_kind` により識別すれば衝突なく運用可能。
+- **TimeRex / LStep を迂回する限界** — CS が assignment 情報をどこで見て input シートに記入するのか（form 応答を直接見るのか、Slack なのか、LStep なのか）。もし LStep を見ながら入力するなら、新たな LStep 依存が生じる。Q5 と合わせて確認が必要。
 
 ---
 
 ## 10. Owner / next action
 
-- **Owner:** Hermes (orchestration) + Claude (spec drafting, post-합의 구현)
-- **Next action:** 별도 partner canonical 도입을 중단하고, `Coaches` / `Customer_Coach_Assignments` 확장안으로 spec/code를 재정렬
-- **Coding gate:** 사용자 설계 결정 반영 완료 후 migration/refactor 슬라이스로 진행 가능.
+- **Owner:** Hermes（orchestration）+ Claude（spec drafting、合意後の実装）
+- **Next action:** 別 partner canonical の導入を中止し、`Coaches` / `Customer_Coach_Assignments` 拡張案へ spec / code を再整理する
+- **Coding gate:** ユーザーの設計決定反映完了後、migration / refactor slice に進行可能。

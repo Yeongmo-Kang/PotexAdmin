@@ -1,10 +1,10 @@
-# Potex Mutable-Relationship Schema Normalization Plan
+# Potex 可変リレーション Schema Normalization 計画
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **Hermes 向け:** この計画を subagent-driven-development スキルでタスクごとに実装すること。
 
-**Goal:** Move mutable or multi-valued customer relationships out of `Customers` into dedicated tables, while adding `created_at` / `updated_at` metadata to canonical data tables.
+**Goal:** 可変、または複数値を持つ customer relationship を `Customers` から専用テーブルへ移し、同時に canonical data table へ `created_at` / `updated_at` metadata を追加する。
 
-**Architecture:** Keep `Customers` as the stable person master. Represent mutable relationships as separate canonical tables: coach assignments, channel links, plans, payments, and conversion events. Remove safe derived duplicate columns only after downstream views can recover names by joining on IDs.
+**Architecture:** `Customers` は安定した person master として維持する。可変 relationship は別の canonical table で表現する: coach assignment、channel link、plan、payment、conversion event。下流 view が ID join で名前を復元できるようになった後に限り、安全な derived duplicate column を削除する。
 
 **Tech Stack:** Google Apps Script, TypeScript, clasp, spreadsheet-backed canonical tables.
 
@@ -24,17 +24,17 @@
 - `ConversionHistory`
 
 ### Design rules
-1. `Customers` stores stable person-level identity.
-2. Changing relationships live in separate tables.
-3. Source evidence stays in staging tables.
-4. Derived display names should be removed when recoverable by join.
-5. Canonical tables should have `created_at` and `updated_at`.
+1. `Customers` には、安定した person-level identity を保存する。
+2. 変化する relationship は別テーブルに置く。
+3. source evidence は staging table に残す。
+4. join で復元できる derived display name は削除すべき。
+5. canonical table には `created_at` と `updated_at` を持たせる。
 
 ---
 
-## Phase 1: Add target tables and metadata columns
+## Phase 1: target table と metadata column を追加する
 
-**Objective:** Introduce canonical tables for mutable relationships and attach metadata columns to existing canonical lifecycle tables.
+**Objective:** 可変 relationship 用の canonical table を導入し、既存 canonical lifecycle table に metadata column を付与する。
 
 **Files:**
 - Modify: `src/constants.ts`
@@ -43,24 +43,24 @@
 - Modify: `README.md`
 
 **Steps:**
-1. Add sheet constants for `Customer_Coach_Assignments` and `Customer_Channel_Links`.
-2. Define headers for both tables including `created_at` / `updated_at`.
-3. Derive current coach assignments from staged customer rows.
-4. Derive channel links from staged LINE registrations.
-5. Add `created_at` / `updated_at` to `Plans`, `Payments`, `ConversionHistory`.
-6. Wire writes into `runCanonicalRefresh()`.
-7. Build and push.
+1. `Customer_Coach_Assignments` と `Customer_Channel_Links` の sheet constant を追加する。
+2. 両 table の header を `created_at` / `updated_at` 付きで定義する。
+3. staged customer row から current coach assignment を導出する。
+4. staged LINE registration から channel link を導出する。
+5. `Plans`, `Payments`, `ConversionHistory` に `created_at` / `updated_at` を追加する。
+6. `runCanonicalRefresh()` に書き込みを組み込む。
+7. build と push を行う。
 
 **Verification:**
 - `npm run build`
 - `npm run push`
-- Sheets created on next canonical refresh
+- 次回 canonical refresh で sheet が作成されること
 
 ---
 
-## Phase 2: Remove safe duplicate display columns
+## Phase 2: 安全な duplicate display column を削除する
 
-**Objective:** Remove columns whose values are recoverable by join and keep only IDs plus raw source evidence.
+**Objective:** join で復元可能な column を削除し、ID と raw source evidence のみを保持する。
 
 **Candidate removals:**
 - `Staging_Payments.canonical_customer_name`
@@ -69,48 +69,48 @@
 - `Staging_Feedback.canonical_coach_name`
 
 **Steps:**
-1. Update downstream views to join names from `Customers` / `Coaches`.
-2. Remove duplicate columns from staging headers and builders.
-3. Rebuild and republish.
+1. 下流 view を更新し、`Customers` / `Coaches` から name を join する。
+2. staging header と builder から duplicate column を削除する。
+3. rebuild と republish を行う。
 
 ---
 
-## Phase 3: Normalize coach assignment usage
+## Phase 3: coach assignment 利用を正規化する
 
-**Objective:** Stop treating `Customers.assigned_coach_*` as the source of truth.
+**Objective:** `Customers.assigned_coach_*` を source of truth として扱うのをやめる。
 
 **Steps:**
-1. Publish coach-facing and management views from `Customer_Coach_Assignments` + `Coaches`.
-2. Keep `Customers.assigned_coach_id` temporarily as current snapshot only if operationally necessary.
-3. Remove `assigned_coach_name` after all joins are migrated.
+1. coach-facing / management view を `Customer_Coach_Assignments` + `Coaches` から publish する。
+2. `Customers.assigned_coach_id` は、運用上必要であれば current snapshot として一時的に残してよい。
+3. すべての join 移行後に `assigned_coach_name` を削除する。
 
 ---
 
-## Phase 4: Normalize course / contract semantics
+## Phase 4: course / contract semantics を正規化する
 
-**Objective:** Make plan/contract tables authoritative so `Customers.course_name` becomes unnecessary.
+**Objective:** plan/contract table を authoritative にし、`Customers.course_name` を不要にする。
 
 **Steps:**
-1. Define whether `Plans` is enough or if `Contracts` is needed.
-2. Move current-plan derivation into plan lifecycle tables.
-3. Remove `Customers.course_name` after downstream consumers are migrated.
+1. `Plans` だけで十分か、`Contracts` が必要かを定義する。
+2. current-plan の導出を plan lifecycle table に移す。
+3. 下流 consumer の移行後に `Customers.course_name` を削除する。
 
 ---
 
-## Phase 5: Normalize channel identity
+## Phase 5: channel identity を正規化する
 
-**Objective:** Stop storing channel-specific pointers on `Customers`.
+**Objective:** `Customers` に channel 固有ポインタを保持するのをやめる。
 
 **Steps:**
-1. Promote `Customer_Channel_Links` as the customer ↔ channel source of truth.
-2. Remove `Customers.line_registration_id` after views are migrated.
-3. Extend channel model later for non-LINE channels.
+1. `Customer_Channel_Links` を customer ↔ channel の source of truth として昇格させる。
+2. view 移行後に `Customers.line_registration_id` を削除する。
+3. 将来的に non-LINE channel 向けに channel model を拡張する。
 
 ---
 
 ## Acceptance criteria
 
-- Mutable relationships are represented in separate tables.
-- Existing canonical lifecycle tables include `created_at` / `updated_at`.
-- `Customers` is moving toward stable person-master semantics.
-- Safe duplicate display columns have a clear removal path.
+- 可変 relationship が別テーブルで表現されている。
+- 既存 canonical lifecycle table に `created_at` / `updated_at` が含まれている。
+- `Customers` が stable person-master semantics に向かって整理されている。
+- 安全な duplicate display column に対して、明確な削除パスがある。

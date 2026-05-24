@@ -1,10 +1,10 @@
-# Non-LStep Phase 1 Hardening Implementation Plan
+# Non-LStep Phase 1 Hardening 実装計画
 
-> **For Hermes:** Use subagent-driven-development skill if this plan turns into code-heavy implementation. For now, this is a low-risk documentation/inspection slice that can be executed directly.
+> **Hermes 向け:** この計画がコード中心の実装になった場合は subagent-driven-development スキルを使うこと。現時点では、これは低リスクな documentation/inspection slice なので、直接実行できる。
 
-**Goal:** Progress Potex Phase 1 while LStep/TimeRex/marketing-CS workflow decisions are intentionally parked.
+**Goal:** LStep/TimeRex/marketing-CS workflow に関する判断を意図的に保留したまま、Potex Phase 1 を前進させる。
 
-**Architecture:** Keep `POTEX DB` as the only canonical database. Do not modify source/reference workbooks. Focus on runbook consistency, operator-facing documentation, and inspectability around already-built CS/Executive/Concierge surfaces.
+**Architecture:** `POTEX DB` を唯一の canonical database として維持する。source/reference workbook は変更しない。すでに構築済みの CS/Executive/Concierge surface を中心に、runbook の一貫性、operator 向け documentation、inspectability を強化する。
 
 **Tech Stack:** Google Sheets, Apps Script (`potex-gas`), Python Google Sheets API inspection scripts, Markdown runbooks.
 
@@ -13,24 +13,24 @@
 ## Scope
 
 ### In scope
-- Clarify that LStep/TimeRex/marketing-CS automation is parked until business workflow confirmation.
-- Harden Phase 1 cutover runbook around already-provisioned workbooks.
-- Update sheet reference/operator docs for currently live CS/Executive/Concierge surfaces.
-- Add a deterministic post-refresh inspection checklist that does not depend on `clasp run`.
-- Clean stale backlog statements that assume old P1/P2/P3 payment queue counts before latest publish.
+- LStep/TimeRex/marketing-CS automation は、business workflow の確認が終わるまで保留であることを明確化する。
+- すでに provision 済みの workbook を前提に、Phase 1 cutover runbook を harden する。
+- 現在 live な CS/Executive/Concierge surface に合わせて、sheet reference / operator docs を更新する。
+- `clasp run` に依存しない deterministic な post-refresh inspection checklist を追加する。
+- 最新 publish 前の古い P1/P2/P3 payment queue count を前提にしている stale な backlog 記述を整理する。
 
 ### Out of scope
-- LStep API / webhook / TimeRex integration.
-- Slack reporting workflow change.
-- Automatic LStep writeback.
-- Source workbook mutation.
-- Operator approval of alias/payment rows before fresh publish verification.
+- LStep API / webhook / TimeRex integration。
+- Slack reporting workflow の変更。
+- Automatic LStep writeback。
+- Source workbook の変更。
+- fresh publish verification 前の alias/payment row の operator approval。
 
 ---
 
-## Task 1: Mark LStep/TimeRex path as parked
+## Task 1: LStep/TimeRex path を parked と明記する
 
-**Objective:** Prevent accidental implementation against an unconfirmed marketing-CS workflow.
+**Objective:** 未確認の marketing-CS workflow に対して誤って実装を始めることを防ぐ。
 
 **Files:**
 - Modify: `docs/backlog.md`
@@ -38,10 +38,10 @@
 - Modify: `CLAUDE.md`
 
 **Steps:**
-1. Add a short note that LStep/TimeRex/marketing-CS workflow is intentionally parked.
-2. State that current spreadsheet readers remain thin and replaceable.
-3. State that no LStep writeback/API work should start until plan/option/API/TimeRex requirements are confirmed.
-4. Verify by searching for `LStep/TimeRex` and `parked` in docs.
+1. LStep/TimeRex/marketing-CS workflow は意図的に parked している、という短い注記を追加する。
+2. 現在の spreadsheet reader は thin であり、将来置き換え可能であることを明記する。
+3. plan/option/API/TimeRex requirement が確認されるまで、LStep writeback/API work を始めてはいけないと明記する。
+4. docs 内で `LStep/TimeRex` と `parked` を検索して確認する。
 
 **Verification:**
 ```bash
@@ -56,71 +56,71 @@ PY
 
 ---
 
-## Task 2: Finalize Phase 1 cutover runbook for current reality
+## Task 2: 現実の状態に合わせて Phase 1 cutover runbook を確定する
 
-**Objective:** Make the runbook match the current deployed state and known CLI limitations.
+**Objective:** runbook を現在の deploy 状態と既知の CLI 制約に一致させる。
 
 **Files:**
 - Modify: `PHASE1_CUTOVER_RUNBOOK.md`
 
 **Steps:**
-1. Add a subsection under final full refresh noting that CLI `clasp run runFullRefresh` may be blocked by local OAuth scopes.
-2. Document fallback verification path using Google Sheets API inspection and existing Python scripts.
-3. Add current required checks:
-   - `Customer_Acquisition_Source` absent.
-   - `経営_データ状況` / `コンシェルジュ_データ状況` acquisition metrics present after publish.
-   - `CS_入金名寄せ確認` header is not blank/stale before approval.
-   - `CS_継続名寄せ確認` existence/row count is checked after publish.
-4. Do not add manual UI steps except where unavoidable; prefer script-based inspection.
+1. final full refresh の節の下に、CLI `clasp run runFullRefresh` は local OAuth scope の都合で block される可能性があることを追記する。
+2. Google Sheets API inspection と既存 Python script を使う fallback verification path を文書化する。
+3. 現在必要な check を追加する:
+   - `Customer_Acquisition_Source` が存在しないこと。
+   - publish 後に `経営_データ状況` / `コンシェルジュ_データ状況` の acquisition metric が存在すること。
+   - 承認前に `CS_入金名寄せ確認` の header が blank/stale でないこと。
+   - publish 後に `CS_継続名寄せ確認` の存在 / row count を確認すること。
+4. やむを得ない場合を除き manual UI step は増やさず、script-based inspection を優先する。
 
 **Verification:**
-- Search runbook for `clasp run`, `Customer_Acquisition_Source`, `CS_入金名寄せ確認`.
+- runbook 内で `clasp run`, `Customer_Acquisition_Source`, `CS_入金名寄せ確認` を検索する。
 
 ---
 
-## Task 3: Update sheet reference for current CS review tabs
+## Task 3: 現在の CS review tab に合わせて sheet reference を更新する
 
-**Objective:** Ensure non-technical operators know which tabs are read-only and which columns are editable.
+**Objective:** 非技術系 operator が、どの tab が read-only で、どの column が編集可能かを理解できるようにする。
 
 **Files:**
 - Modify: `docs/sheet-reference.md`
 - Modify: `OPERATIONS_MANUAL.md`
 
 **Steps:**
-1. Add entries for `CS_入金名寄せ確認` and `CS_継続名寄せ確認` to sheet reference if missing.
-2. For each tab, list editable columns only:
+1. `CS_入金名寄せ確認` と `CS_継続名寄せ確認` の entry がなければ、sheet reference に追加する。
+2. 各 tab について、editable column だけを列挙する:
    - `operator_decision_status`
    - `operator_selected_customer_id`
    - `operator_selected_customer_name`
    - `operator_note`
-3. Add warning: do not approve rows before fresh publish verification if header/priority counts look stale.
-4. Add note that publish columns must not be edited.
+3. warning を追加する: header / priority count が stale に見える場合、fresh publish verification 前に row を approve しないこと。
+4. publish column は編集してはいけないことを追記する。
 
 **Verification:**
-- Search for both tab names in `docs/sheet-reference.md` and `OPERATIONS_MANUAL.md`.
+- `docs/sheet-reference.md` と `OPERATIONS_MANUAL.md` の両方で、2 つの tab 名を検索する。
 
 ---
 
-## Task 4: Add post-refresh inspection script/report plan
+## Task 4: post-refresh inspection script/report plan を追加する
 
-**Objective:** Make post-refresh verification repeatable even when Apps Script execution API is blocked locally.
+**Objective:** Apps Script execution API が local で block される場合でも、post-refresh verification を再実行可能にする。
 
 **Files:**
 - Create or modify: `inspect_post_refresh_state.py` or extend `inspect_phase1_operability.py`
 - Output: `generated/post_refresh_state.json`
 
 **Steps:**
-1. Read IDs from `generated/phase1_script_properties.json`.
-2. Use `~/.hermes/google_token.json` with Google Sheets API.
-3. Collect:
-   - workbook tab presence
-   - `Customer_Acquisition_Source` absence
-   - `経営_データ状況` metrics
-   - `コンシェルジュ_データ状況` metrics
-   - `CS_入金名寄せ確認` header and priority counts
-   - `CS_継続名寄せ確認` presence and priority counts
-4. Emit JSON report with timestamp and verdicts.
-5. Keep it read-only.
+1. `generated/phase1_script_properties.json` から ID を読む。
+2. Google Sheets API 用に `~/.hermes/google_token.json` を使う。
+3. 次を収集する:
+   - workbook tab の存在
+   - `Customer_Acquisition_Source` の不在
+   - `経営_データ状況` の metric
+   - `コンシェルジュ_データ状況` の metric
+   - `CS_入金名寄せ確認` の header と priority count
+   - `CS_継続名寄せ確認` の存在と priority count
+4. timestamp と verdict を含む JSON report を出力する。
+5. read-only を維持する。
 
 **Verification:**
 ```bash
@@ -130,51 +130,51 @@ python -m json.tool generated/post_refresh_state.json >/dev/null
 
 ---
 
-## Task 5: Build/push after documentation or code changes
+## Task 5: documentation または code change 後に build/push する
 
-**Objective:** Ensure no TypeScript regression if code was touched.
+**Objective:** code を触った場合に TypeScript regression がないことを保証する。
 
 **Files:**
 - `potex-gas/src/**` only if code changes are made.
 
 **Steps:**
-1. If only Markdown changed, no GAS push is needed.
-2. If TypeScript changed:
+1. Markdown だけを変更した場合、GAS push は不要。
+2. TypeScript を変更した場合:
    ```bash
    cd potex-gas
    npm run build
    npm run push
    ```
-3. Record build/push result in `agents/session.md`.
+3. build/push の結果を `agents/session.md` に記録する。
 
 **Verification:**
-- `npm run build` passes when code changed.
+- code を変更した場合は `npm run build` が通ること。
 
 ---
 
-## Task 6: Update backlog/session closeout
+## Task 6: backlog/session の closeout を更新する
 
-**Objective:** Leave the project resumable.
+**Objective:** project を再開可能な状態で残す。
 
 **Files:**
 - Modify: `agents/session.md`
 - Modify: `docs/backlog.md`
 
 **Steps:**
-1. Mark the non-LStep hardening slice as completed or in-progress with clear next step.
-2. Keep LStep/TimeRex under parked / needs-confirmation.
-3. Record which verification remains dependent on next live full refresh/publish.
-4. Ensure next priorities do not tell operators to approve stale rows.
+1. non-LStep hardening slice を completed または in-progress として記録し、次の step を明確にする。
+2. LStep/TimeRex は parked / needs-confirmation のままにする。
+3. 次回の live full refresh/publish に依存して残る verification を記録する。
+4. stale な row を operator に approve させるような priority を残さない。
 
 **Verification:**
-- Read `agents/session.md` and `docs/backlog.md` around priority sections.
+- priority section 周辺の `agents/session.md` と `docs/backlog.md` を読む。
 
 ---
 
 ## Exit Criteria
 
-- LStep/TimeRex work is explicitly parked in docs.
-- Phase 1 runbook includes current post-refresh checks and CLI limitation.
-- Sheet reference covers both payment and continuation alias review tabs.
-- A repeatable read-only inspection path exists or is planned with exact output path.
-- Backlog/session next steps are safe and non-stale.
+- LStep/TimeRex work が docs 上で明示的に parked されている。
+- Phase 1 runbook に current post-refresh check と CLI limitation が含まれている。
+- sheet reference が payment / continuation の両 alias review tab をカバーしている。
+- 再実行可能で read-only な inspection path が存在する、または正確な output path 付きで計画されている。
+- backlog/session の next step が安全で stale でない。

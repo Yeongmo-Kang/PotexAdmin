@@ -1,38 +1,36 @@
-# Workbook UX Maintenance
+# Workbook UX メンテナンス
 
-## Purpose
+## 目的
+`tools/apply_workbook_ux.py` は、現在の Potex workbook UX package を再適用するための script です。単発の手作業 API 呼び出しに依存せず、見た目と操作性を戻せます。
 
-`tools/apply_workbook_ux.py` re-applies the current Potex workbook UX package so formatting does not depend on one-off manual API calls.
-
-This script is intended for:
-- reapplying frozen headers / filters / tab colors after sheet recreation
-- restoring conditional formatting after tab resets
-- repopulating README / legend tabs
-- rehiding safe helper / source / ID columns on role workbooks
-- reapplying per-sheet Japanese guidance notes on headers
-- restoring editable-column dropdown validation and yellow input emphasis
-- restoring column-group header colors / practical widths / wrapped comment columns
+主な用途:
+- sheet 再作成後に frozen headers / filters / tab colors を戻す
+- tab reset 後に conditional formatting を復元する
+- README / legend tab を再投入する
+- role workbook の安全な helper / source / ID 列を再度 hidden にする
+- header 上の日本語 guidance note を再適用する
+- editable column の dropdown validation と黄色の入力強調を戻す
+- 列グループ header 色、実用的な列幅、comment 列の wrap を戻す
 
 ## Script
-
 Path:
 - `tools/apply_workbook_ux.py`
 
-## Requirements
+## 必要条件
+- Google OAuth token: `~/.hermes/google_token.json`
+- Python 環境に次が入っていること
+  - `google-auth`
+  - `google-auth-httplib2`
+  - `google-api-python-client`
 
-- Google OAuth token at `~/.hermes/google_token.json`
-- Python environment with `google-auth`, `google-auth-httplib2`, `google-api-python-client`
+## 使い方
 
-## Usage
-
-### Reapply all maintained workbook UX
-
+### 管理対象 workbook すべてに再適用
 ```bash
 python tools/apply_workbook_ux.py --scope all
 ```
 
-### Reapply one workbook group only
-
+### 1 つの workbook group だけ再適用
 ```bash
 python tools/apply_workbook_ux.py --scope sales
 python tools/apply_workbook_ux.py --scope coaches
@@ -40,22 +38,21 @@ python tools/apply_workbook_ux.py --scope concierge
 python tools/apply_workbook_ux.py --scope db
 ```
 
-### Reapply only README + hidden helper columns
-
+### README + hidden helper columns だけ再適用
 ```bash
 python tools/apply_workbook_ux.py --readmes-only
 ```
 
-## Current coverage
+## 現在の対象範囲
 
-### Role workbooks
+### Role workbook
 - `Potex CS`
 - `Potex Executive`
 - `Potex Sales`
 - `Potex Coaches`
 - `Potex Concierge`
 
-### Admin workbook sections
+### Admin workbook の対象 section
 - `Sync_Log`
 - `Sync_Control`
 - `Publish_Manifest`
@@ -64,20 +61,18 @@ python tools/apply_workbook_ux.py --readmes-only
 - `Staging_Payments`
 - `Customer_Coach_Assignments`
 
-### Extra second-pass cleanup
-- repopulates `営業_使い方`, `コーチ_使い方`, `コンシェルジュ_使い方`
-- rehides safe helper/source/id columns in selected `CS` / `Sales` / `Coaches` / `Concierge` tabs
+### 追加の second-pass cleanup
+- `営業_使い方`, `コーチ_使い方`, `コンシェルジュ_使い方` を再投入
+- 一部の `CS` / `Sales` / `Coaches` / `Concierge` tab で、安全な helper/source/id 列を再 hidden 化
 
-## Notes
+## 注意
+- この script は意図的に保守的です。operator UX 上、安全と判断済みの列だけを hidden にします。
+- `POTEX DB` は operator workbook ではなく、admin / debug workbook として扱います。
+- publish schema が変わったら、`HIDE_COLUMNS` の header 名や `apply_baseline_and_signals()` の formula を更新してください。
 
-- The script is intentionally conservative: it hides only columns already judged safe for operator UX.
-- `POTEX DB` is treated as an admin/debug workbook, not an operator workbook.
-- If a publish schema changes, update the header names in `HIDE_COLUMNS` or the formulas in `apply_baseline_and_signals()`.
-
-## Recommended operator policy
-
-When a workbook/tab is recreated or a publish reset wipes formatting:
-1. run the relevant publish job first,
-2. run `tools/apply_workbook_ux.py`,
-3. visually spot-check the key tabs,
-4. confirm hidden helper columns and README legends still match the current schema.
+## 推奨運用
+workbook / tab を再作成した、または publish reset で formatting が消えたときは、次の順で実施します。
+1. 先に該当 publish job を実行する
+2. `tools/apply_workbook_ux.py` を実行する
+3. 重要 tab を目視 spot-check する
+4. hidden helper columns と README legend が現在 schema と一致していることを確認する

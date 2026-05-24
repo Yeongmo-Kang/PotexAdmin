@@ -1,47 +1,47 @@
 # Potex Phase 1 Cutover Runbook
 
-> **Status (2026-05-19):** Cutover complete. All 5 publish targets (`POTEX DB` / `Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) are live with Apps Script trigger automation. This document is retained as a setup/cutover reference for future workbooks (e.g., partner pipeline view).
+> **Status (2026-05-19):** Cutover は完了済み。全 6 publish targets (`POTEX DB` / `Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) は live で、Apps Script trigger automation も稼働中。この文書は、今後の workbook（例: partner pipeline view）向けの setup / cutover 参考資料として残す。
 
 ## 1. Architecture
-- `POTEX DB` is the canonical data hub. Source workbooks remain read-only.
-- Role workbooks (`Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) are publish targets only.
-- The Apps Script project `Potex Automation Hub` (deployed under `y.kang@potex.jp`) drives canonical refresh → publish → writeback.
+- `POTEX DB` が canonical data hub。source workbooks は read-only のまま使う。
+- role workbooks (`Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) は publish target 専用。
+- Apps Script project `Potex Automation Hub`（`y.kang@potex.jp` 配下）が canonical refresh → publish → writeback を動かす。
 
-## 2. Provisioning a new workbook
-1. Add the new workbook section to `workbook_manifest.json`.
-2. Run `provision_phase1_workbooks.py` (idempotent — creates missing tabs only).
-3. Add the new spreadsheet id to `potex-gas/src/config.ts` (as a default) and to script properties if override is required.
-4. Rebuild + push GAS:
+## 2. 新しい workbook を追加する手順
+1. `workbook_manifest.json` に新しい workbook section を追加する。
+2. `provision_phase1_workbooks.py` を実行する（idempotent。足りない tabs だけ作成）。
+3. `potex-gas/src/config.ts` に新しい spreadsheet id を追加する（default 用）。override が必要なら script properties にも入れる。
+4. GAS を rebuild + push する:
    ```bash
    cd potex-gas && npm install && npm run deploy
    ```
-5. Run `bootstrapProject()` (one-time) and `installTriggers()` from the Apps Script UI.
+5. Apps Script UI で `bootstrapProject()`（初回のみ）と `installTriggers()` を実行する。
 
-## 3. Trigger cadence (default, installed by `installTriggers()`)
-- `runPublishAll()` — every 1 hour
-- `runWritebackCollection()` — every 30 minutes
-- `runFullRefresh()` — daily at 07:00 JST
+## 3. Trigger cadence（`installTriggers()` の既定値）
+- `runPublishAll()` — 1時間ごと
+- `runWritebackCollection()` — 30分ごと
+- `runFullRefresh()` — 毎日 07:00 JST
 
 ## 4. Operator rules
-- Do not edit DB workbook directly.
-- Do not edit publish surfaces by hand.
-- Human input flows through writeback input tabs only:
+- DB workbook を直接編集しない。
+- publish surfaces を手で編集しない。
+- 人の入力は writeback input tabs のみを通す:
   - `CS_別名解決入力` (alias decisions)
   - `CS_更新アクション` (other operator actions)
 
 ## 5. Alias resolution loop
-1. `runPublishAll()` publishes unresolved aliases to `CS_別名解決入力`.
-2. CS operator fills `operator_decision_status` / `operator_selected_customer_id` / `operator_selected_customer_name` / `operator_note`.
-3. `runWritebackCollection()` validates and merges decisions into `Customer_Alias_Map`. Invalid rows return as `sync_status=error_*`.
-4. Next `runPublishAll()` removes resolved rows from review queues.
+1. `runPublishAll()` が未解決 alias を `CS_別名解決入力` に publish する。
+2. CS operator が `operator_decision_status` / `operator_selected_customer_id` / `operator_selected_customer_name` / `operator_note` を入力する。
+3. `runWritebackCollection()` が内容を検証し、`Customer_Alias_Map` に merge する。無効な行は `sync_status=error_*` で戻る。
+4. 次の `runPublishAll()` で解決済み行が review queue から消える。
 
-## 6. Verification (read-only)
-- `generated/inspect_sales_coach_provisioning.py` — row counts across Sales / Coaches publish surfaces.
-- Apps Script UI execution log — direct view of trigger runs.
-- DB workbook health: `Staging_Customers` row count vs source named rows.
-- Publish surface health: each `*_Data_Health` tab should not suddenly drop to 0.
+## 6. Verification（read-only）
+- `generated/inspect_sales_coach_provisioning.py` — Sales / Coaches publish surfaces の行数確認
+- Apps Script UI execution log — trigger 実行状況の直接確認
+- DB workbook health: `Staging_Customers` の行数と source named rows の比較
+- Publish surface health: 各 `*_Data_Health` タブが急に 0 になっていないか確認
 
 ## 7. Known fragilities
-- Manually re-merging cells on review tabs swallows `setValues`. The publisher (`potex-gas/src/sheets.ts > clearAndRewrite`) calls `breakApart()` before write to defend against this. If a review tab shows blank headers, suspect re-merge.
-- Sheets auto-converts string `'TRUE'`/`'FALSE'` to boolean on roundtrip. The Sales views handle this via case-insensitive comparison (`String(v).toUpperCase() === 'TRUE'`). Apply the same pattern to any new boolean column.
-- Stuck `PropertiesService` values can override defaults. New `ENABLE_*` flags should use the Concierge pattern: `asBool(getProp(...)) || Boolean(spreadsheetId)`.
+- review tabs でセルを手動再結合すると `setValues` が効かなくなる。publisher (`potex-gas/src/sheets.ts > clearAndRewrite`) は書き込み前に `breakApart()` を呼んで防御している。review tab の header が空白なら、再結合を疑う。
+- Sheets は文字列 `'TRUE'` / `'FALSE'` を往復時に boolean へ自動変換する。Sales views では case-insensitive 比較 (`String(v).toUpperCase() === 'TRUE'`) で対処している。新しい boolean 列でも同じ方式を使う。
+- `PropertiesService` の値が残っていると default を上書きしてしまう。新しい `ENABLE_*` flag は Concierge pattern を使う: `asBool(getProp(...)) || Boolean(spreadsheetId)`。

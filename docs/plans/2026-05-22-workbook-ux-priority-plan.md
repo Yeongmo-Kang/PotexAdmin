@@ -1,20 +1,20 @@
-# Potex Workbook UX Priority Plan
+# Potex Workbook UX 優先度プラン
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Improve usability across all managed Potex workbooks in priority order based on operator impact, input risk, and decision-making value.
+**Goal:** Potex の管理 workbook 全体について、operator 影響・入力リスク・意思決定価値の高い順に usability を改善する。
 
-**Architecture:** Treat workbooks as role-specific UIs, not just data outputs. Prioritize sheets where humans actively decide, type, or triage work; secondarily improve manager dashboards; then clean up read-only consumption surfaces. Keep `POTEX DB` low priority except for admin-safe readability because it is not the daily operator surface.
+**Architecture:** workbook を単なるデータ出力ではなく、役割別 UI として扱う。優先するのは、人が判断する・入力する・仕分けする sheet。次に manager dashboard。その後に read-only の参照面を整える。`POTEX DB` は daily operator surface ではないため、admin-safe readability を除いて優先度は低めにする。
 
-**Tech Stack:** Google Sheets API via `googleapiclient`, existing Apps Script publish/writeback pipeline, Potex managed workbooks (`Potex CS`, `Potex Executive`, `Potex Concierge`, `Potex Sales`, `Potex Coaches`, `POTEX DB`).
+**Tech Stack:** Google Sheets API via `googleapiclient`, 既存 Apps Script publish/writeback pipeline, Potex managed workbook (`Potex CS`, `Potex Executive`, `Potex Concierge`, `Potex Sales`, `Potex Coaches`, `POTEX DB`).
 
 ---
 
 ## Evidence Snapshot (2026-05-22)
 
-### Legacy workbook reference review (2026-05-23)
-- Reviewed the actual live sheet `POTEX_顧客管理_v2 のコピーテスト用 のコピー` in Google Sheets, not just the Apps Script code.
-- Verified a README-first, role-tab structure that matches Japanese spreadsheet-first operator expectations:
+### Legacy workbook の確認結果 (2026-05-23)
+- Apps Script code だけでなく、live sheet `POTEX_顧客管理_v2 のコピーテスト用 のコピー` を実際に確認した
+- README-first / role-tab 構成が、日本語 spreadsheet 中心の operator に合っていると確認した
   - `__README`
   - `商談リスト`
   - `コンシェルジュ業務`
@@ -29,298 +29,287 @@
   - `0_集計用ビュー`
   - `債権履歴`
   - `債権サマリー`
-- Verified `__README` acts as an operator-facing landing page with Japanese rule explanations, colored emphasis, and practical workflow notes.
-- Planning conclusion: use this workbook as a **UX/reference-language exemplar**, not an architecture exemplar. Reuse its operator-facing patterns (Japanese naming, README-first onboarding, role-tab mental model), but do **not** copy its sheet-coupled formula architecture, version-offset branching, or sheet-as-DB assumptions.
+- `__README` は operator 向け landing page として機能し、日本語ルール説明、色による強調、実務メモがある
+- 結論: この workbook は **UX / 表現の見本** として使う。architecture の見本としては使わない。日本語 naming、README-first、role-tab の考え方は再利用するが、sheet 間 formula 依存や sheet-as-DB は持ち込まない
 
-### Already improved
-- `Potex CS`: all tabs now have frozen headers, filters, tab colors, and advanced UX on input/review sheets.
-- `Potex Executive`: all tabs now have frozen headers, filters, tab colors, and signal-style conditional formatting on key summary tabs.
+### すでに改善済み
+- `Potex CS`: すべての tab に frozen headers, filters, tab colors を適用済み。input / review sheet の UX も強化済み
+- `Potex Executive`: すべての tab に frozen headers, filters, tab colors を適用済み。主要 summary tab に signal 型 conditional formatting も適用済み
 
-### Still untouched / under-improved
-- `Potex Concierge`: all 3 tabs still have `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`.
-- `Potex Sales`: all 5 tabs still have `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`.
-- `Potex Coaches`: all 4 tabs still have `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`.
-- `POTEX DB`: almost all tabs still have no filters/frozen columns/visual admin affordances; acceptable short-term because this is not the main operator UI.
+### まだ未着手 / 改善不足
+- `Potex Concierge`: 3 tab すべて `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`
+- `Potex Sales`: 5 tab すべて `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`
+- `Potex Coaches`: 4 tab すべて `frozenRows=0`, `hasFilter=false`, `conditionalRuleCount=0`
+- `POTEX DB`: ほぼ全 tab で filter / freeze / admin 向け視認性が弱い。短期的には許容可
 
-### Team impact summary
-- **CS**: highest daily operational load, highest input error risk, highest need for action prioritization. Mostly addressed already.
-- **Executive**: high decision value, lower direct input risk. Mostly addressed already.
-- **Sales**: active queue + contracts + pending payments; likely next highest business leverage.
-- **Coaches**: daily consumption surface with emotionally heavy follow-up content; readability matters.
-- **Concierge**: read-only but still used to interpret follow-up context; moderate value.
-- **DB/Admin**: lowest front-line UX priority, but useful for admin/debug readability later.
-- **Cross-workbook consistency**: once untouched workbooks reach parity, align Japanese README style, tab naming, and operator wording with the legacy workbook because that is already familiar to Potex operators.
+### チーム影響の要約
+- **CS**: 日次運用負荷が最も高く、入力ミスの危険も高い。大部分はすでに対応済み
+- **Executive**: 意思決定価値が高い。入力リスクは低い。大部分は対応済み
+- **Sales**: active queue + 契約 + 未入金があり、次に business leverage が高い
+- **Coaches**: 日常的に follow-up 情報を読む面で、読みやすさが重要
+- **Concierge**: read-only だが文脈確認に使うため、中程度の価値
+- **DB/Admin**: frontline UX の優先度は低いが、後で admin/debug readability は上げたい
+- **Cross-workbook consistency**: 未整備 workbook が baseline parity に達したら、README tone・tab naming・operator wording を legacy workbook に寄せる
 
 ---
 
-## Priority Framework
+## 優先度の考え方
+各 workbook を次の 3 軸で見る。
 
-Score each workbook on three dimensions:
+1. **Human input risk** — UI が分かりにくいと誤入力や writeback failure が起きるか
+2. **Decision urgency** — 今日どの行を動かすか判断する workbook か
+3. **Business leverage** — 改善すると売上・継続・エスカレーションにすぐ効くか
 
-1. **Human input risk** — can a confusing UI cause bad data or failed writeback?
-2. **Decision urgency** — does the workbook decide who gets actioned today?
-3. **Business leverage** — does improving this surface affect revenue, retention, or escalations quickly?
-
-### Final priority order
+### 最終優先順
 1. **Potex Sales**
 2. **Potex Coaches**
 3. **Potex Concierge**
 4. **POTEX DB**
-5. **CS / Executive follow-up refinements**
+5. **CS / Executive の second pass**
 
-Rationale:
-- CS/Executive were highest priority and are now substantially upgraded.
-- Sales is the biggest remaining operational/business surface still untouched.
-- Coaches directly consume urgent follow-up signals and need faster scanning.
-- Concierge is read-only and smaller, so it comes after Coaches.
-- DB is admin-only, so readability matters, but not before role workbooks.
-- CS/Executive should get a second pass only after the untouched workbooks reach baseline parity.
+理由:
+- CS / Executive は最優先で、すでにかなり改善済み
+- Sales は未着手で、かつ business 影響が大きい
+- Coaches は日常的に urgent follow-up を見るため次点
+- Concierge は read-only で規模も小さいのでその後
+- DB は admin-only のため role workbook より後
+- CS / Executive は、他 workbook が最低ラインに揃ってから second pass を行う
 
 ---
 
-## Workbook-by-Workbook Plan
+## Workbook ごとのプラン
 
-## Phase 1 — Sales (next highest priority)
+## Phase 1 — Sales
 
 **Why first:**
-- Contains active revenue / contract / pending payment views.
-- Still has zero baseline UX enhancements.
-- Misreading `pending` vs `paid`, P0/P1 priorities, or missing canonical linkage has direct business impact.
+- 売上・契約・未入金の active view を持つ
+- baseline UX 改善がまだゼロ
+- `pending` / `paid`、P0/P1、canonical linkage の読み違いが business に直撃する
 
-### Target sheets
+### 対象 sheet
 - `営業_契約一覧`
 - `営業_未入金一覧`
 - `営業_ファネル推移`
 - `営業_データ状況`
 - `営業_使い方`
 
-### UX goals
-- Freeze header rows everywhere.
-- Freeze 1-2 key left columns depending on sheet.
-- Add filters everywhere.
-- Apply row priority coloring (`P0`, `P1`, `P2`, `P3`) on actionable queues.
-- Highlight payment state / unresolved canonical linkage / pending rows.
-- Convert `営業_データ状況` into a signal-style summary like `経営_データ状況`.
-- Format date/amount columns for easier scanning where safe.
-- Widen notes/status columns if present.
+### UX 目標
+- すべて header freeze
+- sheet ごとに重要な左列を 1〜2 列 freeze
+- すべて filter 追加
+- 行動優先度 queue に `P0`, `P1`, `P2`, `P3` 色分け
+- payment state / canonical 未一致 / pending を強調
+- `営業_データ状況` を `経営_データ状況` に近い signal 型 summary にする
+- date / amount 列を読みやすく format
+- note / status 列があれば広げる
 
-### Specific intent by tab
-- **`営業_契約一覧`**: highlight `pending`, blank canonical customer, and top-priority rows.
-- **`営業_未入金一覧`**: emphasize `P0/P1`, missing canonical customer, and assigned owner context.
-- **`営業_ファネル推移`**: improve date/event scanning; likely freeze date + event type + customer.
-- **`営業_データ状況`**: red for unmatched/problem metrics, green for healthy counts only where meaningfully positive.
-- **`営業_使い方`**: give operator-facing legend for color meaning and reading order.
+### tab ごとの意図
+- **`営業_契約一覧`**: `pending`、canonical customer 空欄、最優先行を強調
+- **`営業_未入金一覧`**: `P0/P1`、canonical customer 未確定、owner 情報を見やすくする
+- **`営業_ファネル推移`**: date / event / customer を読みやすくする
+- **`営業_データ状況`**: problem 指標は赤、健全指標だけ必要に応じて緑
+- **`営業_使い方`**: 色の意味と読み順を説明
 
 ---
 
 ## Phase 2 — Coaches
 
 **Why second:**
-- Coaches consume urgent follow-up/customer-risk information directly.
-- `コーチ_要フォロー一覧` contains long comments and emotionally sensitive context, so readability matters a lot.
-- Still completely untouched UX-wise.
+- coach は urgent follow-up / customer-risk 情報を直接見る
+- `コーチ_要フォロー一覧` は長文 comment と重い文脈を含むため、視認性が重要
+- UX はまだ未着手
 
-### Target sheets
+### 対象 sheet
 - `コーチ_担当負荷`
 - `コーチ_要フォロー一覧`
 - `コーチ_データ状況`
 - `コーチ_使い方`
 
-### UX goals
-- Freeze headers and first identifying columns.
-- Add filters everywhere.
-- Highlight `P1` rows and low-satisfaction alerts.
-- Widen comment/gap comment columns with wrap.
-- Signal negative remaining capacity in `コーチ_担当負荷`.
-- Turn `コーチ_データ状況` into a manager-friendly health block.
+### UX 目標
+- header と識別列を freeze
+- 全 tab に filter
+- `P1` 行と低満足度 alert を強調
+- comment / gap comment 列を広げて wrap
+- `コーチ_担当負荷` で残 capacity マイナスを signal 化
+- `コーチ_データ状況` を manager-friendly な health block にする
 
-### Specific intent by tab
-- **`コーチ_担当負荷`**: emphasize low remaining capacity and follow-up burden.
-- **`コーチ_要フォロー一覧`**: maximize readability of long comments; freeze customer/coach identifiers.
-- **`コーチ_データ状況`**: red for overload/problem metrics, neutral/green for capacity and coverage metrics where appropriate.
-- **`コーチ_使い方`**: add “what to read first” and color legend.
+### tab ごとの意図
+- **`コーチ_担当負荷`**: 余力不足と follow-up 負荷を強調
+- **`コーチ_要フォロー一覧`**: 長文を読みやすくし、customer / coach 識別子を固定
+- **`コーチ_データ状況`**: overload / problem は赤、capacity / coverage は neutral or green
+- **`コーチ_使い方`**: 最初に見る場所と色の意味を説明
 
 ---
 
 ## Phase 3 — Concierge
 
 **Why third:**
-- Read-only surface, so lower input risk than Sales/Coaches.
-- Still important because concierge needs quick context reading for follow-up interpretation.
-- Smaller workbook; fast win after higher-leverage workbooks.
+- read-only なので Sales / Coaches より入力リスクは低い
+- ただし follow-up 文脈を素早く読む用途があり、改善価値はある
+- workbook が小さいため短時間で成果が出やすい
 
-### Target sheets
+### 対象 sheet
 - `コンシェルジュ_フォロー一覧`
 - `コンシェルジュ_データ状況`
 - `コンシェルジュ_使い方`
 
-### UX goals
-- Freeze headers and first identifying columns.
-- Add filters.
-- Highlight `P1` follow-up rows and low-satisfaction/gap-comment cases.
-- Widen comment columns.
-- Turn `コンシェルジュ_データ状況` into signal-style monitor.
+### UX 目標
+- header と識別列を freeze
+- filter 追加
+- `P1` follow-up 行と低満足度 / gap-comment を強調
+- comment 列を広げる
+- `コンシェルジュ_データ状況` を signal 型 monitor にする
 
 ---
 
-## Phase 4 — POTEX DB admin readability
+## Phase 4 — `POTEX DB` の admin readability
 
 **Why fourth:**
-- Not the daily front-line workbook.
-- Still valuable for admin/debugging, especially in `Sync_Log`, `Sync_Control`, `Publish_Manifest`, staging sheets, and canonical maps.
+- frontline の daily workbook ではない
+- ただし `Sync_Log`, `Sync_Control`, `Publish_Manifest`, staging, canonical map の見やすさは admin/debug に効く
 
-### Target areas
+### 対象領域
 - `Sync_Log`
 - `Sync_Control`
 - `Publish_Manifest`
 - `Customer_Coach_Assignments`
 - `Exceptions_*`
 - `Staging_*`
-- high-touch canonical tables only if admin readability benefit is clear
+- admin 効果が大きい canonical table
 
-### UX goals
-- Freeze headers.
-- Add filters to admin/debug tabs.
-- Apply status/error highlighting where it improves debugging.
-- Consider hiding purely internal helper columns only if it does not interfere with automation or manual admin inspection.
+### UX 目標
+- header freeze
+- admin/debug tab に filter
+- status / error 強調で debug しやすくする
+- automation や admin inspection を邪魔しない範囲で helper 列 hidden も検討
 
-### Important constraint
-- Do **not** optimize DB for non-technical operators. It remains an admin/automation workbook.
+### 制約
+- `POTEX DB` は非技術 operator 向けには最適化しない。あくまで admin / automation workbook とする
 
 ---
 
-## Phase 5 — Second-pass refinements on CS / Executive
+## Phase 5 — CS / Executive の second pass
 
 **Why last:**
-- They already have baseline + advanced UX.
-- Refinements are now lower ROI than bringing other workbooks to parity.
+- baseline + advanced UX はすでにある
+- 他 workbook の baseline parity の方が ROI が高い
 
-### Candidate refinements
-- Hide helper/source columns in CS review tabs where safe.
-- Reorder operator-editable columns closer to the left if that does not break publish assumptions.
-- Add legend/README or notes for color meanings.
-- Add top summary blocks for Executive if leadership wants an even more dashboard-like layout.
-- Translate remaining operator-facing English-like value labels (for example `suggested_action` values) into Japanese display text where safe, while preserving machine-safe underlying keys if writeback depends on them.
-- Normalize README tone so each role workbook feels closer to the legacy `__README` experience: direct Japanese guidance, reading order, and clear “what to edit / what not to edit” language.
+### 候補改善
+- CS review tab で安全な helper/source 列を hidden にする
+- publish 前提を壊さない範囲で editable 列を左に寄せる
+- 色の意味を legend / README / note で補足
+- Executive に leadership 要望があれば summary block を追加
+- operator-facing の英語っぽい値（例: `suggested_action`）を、安全なら日本語表示へ
+- 各 role workbook の README tone を legacy `__README` に近づける
 
 ---
 
-## Reference patterns to adopt from the legacy workbook
+## Legacy workbook から取り入れる pattern
 
 ### Adopt
-- `__README` as an explicit landing/guide surface.
-- Role-first tab naming that mirrors the operator’s actual job, not internal schema.
-- Japanese operational phrasing over developer terminology.
-- Workbook-level mental model: sales / concierge / receiver / payments / coach / templates / summaries.
-- Strong distinction between daily work tabs and reference/admin tabs.
+- `__README` を明確な入口にする
+- role-first の tab naming
+- developer 用語より日本語の業務表現
+- workbook 全体の mental model を役割で整理
+- daily work tab と reference/admin tab をはっきり分ける
 
-### Do not adopt directly
-- Cross-sheet formula webs as the primary system contract.
-- Column-position/version-offset branching (`v2.4`, `+2 shift`, etc.).
-- Treating the workbook itself as the source of truth.
-- Upgrade-by-accumulated one-off patch functions as the long-term maintenance model.
+### そのままは採用しない
+- sheet 間 formula 網を system contract にすること
+- 列位置ずれ前提の version branching (`v2.4`, `+2 shift` など)
+- workbook 自体を source of truth にすること
+- 単発 patch function を積み上げる保守モデル
 
-### Translate into the Potex managed-workbook model
-- Keep canonical DB + publish/writeback architecture.
-- Add legacy-style operator affordances only at the workbook surface:
-  - README-first guidance,
-  - Japanese wording,
-  - clear role-specific tabs,
-  - visible reading order,
-  - clear editable vs read-only boundaries.
+### Potex managed-workbook model への置き換え
+- canonical DB + publish/writeback architecture は維持
+- workbook surface にだけ legacy 的な使いやすさを持ち込む
+  - README-first
+  - 日本語 wording
+  - 役割別の明確な tab
+  - 読み順が見えること
+  - editable / read-only 境界が明確なこと
 
 ---
 
-## Execution Tasks
+## 実行タスク
 
-### Task 1: Capture baseline parity gaps for untouched workbooks
-
-**Objective:** Produce a concise matrix of Sales / Coaches / Concierge sheets that still lack frozen rows, filters, and conditional formatting.
+### Task 1: 未着手 workbook の parity gap を記録
+**Objective:** Sales / Coaches / Concierge で、freeze / filter / conditional formatting が不足している sheet を短く整理する。
 
 **Files:**
 - Update: `docs/plans/2026-05-22-workbook-ux-priority-plan.md`
-- Optional scratch: local inspection script only if needed
+- Optional scratch: 必要なら inspection script
 
 **Verification:**
-- Confirm every untouched sheet has baseline metadata recorded.
+- 未着手 sheet すべての baseline metadata が記録されている
 
-### Task 2: Implement Sales baseline UX
-
-**Objective:** Bring all Sales tabs to minimum parity with CS/Executive baseline UX.
+### Task 2: Sales baseline UX 実装
+**Objective:** Sales の全 tab を CS/Executive と同程度の baseline UX にする。
 
 **Files:**
-- No repo code required if using direct Sheets API
-- If automation should be codified long-term, add helper in `potex-gas` or local admin script later
+- 直打ちの Sheets API で済むなら repo code は不要
+- 長期保守するなら後で helper 化
 
 **Verification:**
-- All Sales tabs show frozen header, filters, tab color, and sensible column widths.
+- Sales 全 tab に frozen header, filter, tab color, 適切な列幅がある
 
-### Task 3: Implement Sales advanced signal formatting
-
-**Objective:** Make Sales immediately readable for daily revenue operations.
-
-**Verification:**
-- `営業_未入金一覧` and `営業_契約一覧` visually distinguish urgent vs normal vs resolved-looking rows.
-- `営業_データ状況` highlights unmatched/problem metrics.
-
-### Task 4: Implement Coaches baseline UX
-
-**Objective:** Bring all Coach tabs to baseline parity.
+### Task 3: Sales advanced signal formatting 実装
+**Objective:** daily revenue operation で一目で読めるようにする。
 
 **Verification:**
-- All Coach tabs show frozen header, filters, and readable widths.
+- `営業_未入金一覧` と `営業_契約一覧` で urgent / normal / resolved が視覚的に分かる
+- `営業_データ状況` で unmatched / problem 指標が強調される
 
-### Task 5: Implement Coaches advanced readability formatting
-
-**Objective:** Make long alert comments and coach workload signals easy to scan.
-
-**Verification:**
-- `コーチ_要フォロー一覧` comments wrap cleanly and keep identifiers visible during scroll.
-- `コーチ_担当負荷` visibly flags overloaded/low-capacity coaches.
-
-### Task 6: Implement Concierge baseline + advanced UX
-
-**Objective:** Improve concierge read-only follow-up interpretation surfaces.
+### Task 4: Coaches baseline UX 実装
+**Objective:** Coach 全 tab を baseline parity にする。
 
 **Verification:**
-- `コンシェルジュ_フォロー一覧` is readable and prioritized.
-- `コンシェルジュ_データ状況` has signal-style formatting.
+- Coach 全 tab に frozen header, filter, readable width がある
 
-### Task 7: Implement DB admin readability pass
-
-**Objective:** Improve admin/debugging ergonomics without turning DB into an operator UI.
+### Task 5: Coaches advanced readability 実装
+**Objective:** 長い alert comment と workload signal を読みやすくする。
 
 **Verification:**
-- `Sync_Log` / `Sync_Control` / `Publish_Manifest` / key exception tabs become easier to inspect.
+- `コーチ_要フォロー一覧` の comment がきれいに wrap し、識別子が scroll 中も見える
+- `コーチ_担当負荷` で overload / low-capacity が目立つ
 
-### Task 8: Re-evaluate CS / Executive for second-pass refinements
-
-**Objective:** Only after parity is reached elsewhere, decide if hiding/reordering columns is worth the risk.
+### Task 6: Concierge baseline + advanced UX 実装
+**Objective:** read-only follow-up 解釈面を改善する。
 
 **Verification:**
-- Explicit yes/no decision per candidate refinement.
+- `コンシェルジュ_フォロー一覧` が読みやすく、優先度が分かる
+- `コンシェルジュ_データ状況` が signal 型になる
+
+### Task 7: DB admin readability pass
+**Objective:** DB を operator UI にせず、admin/debug ergonomics だけ改善する。
+
+**Verification:**
+- `Sync_Log` / `Sync_Control` / `Publish_Manifest` / 主要 exception tab が見やすくなる
+
+### Task 8: CS / Executive の second pass 再評価
+**Objective:** 他 workbook が揃った後に、hidden / reorder が本当に必要か判断する。
+
+**Verification:**
+- 候補改善ごとに yes / no を明示できる
 
 ---
 
-## Recommended immediate next action
+## 今すぐの推奨アクション
+**`Potex Sales` から始める。**
 
-**Start with `Potex Sales`.**
-
-It is the highest remaining leverage because:
-- untouched UX baseline,
-- direct revenue/payment visibility,
-- clear priority signals already present in the data,
-- lower structural risk than reworking CS again.
+理由:
+- UX baseline が未着手
+- revenue / payment 影響が大きい
+- priority signal は既に data にある
+- CS を再度いじるより structural risk が低い
 
 ---
 
-## Success Criteria
-
-A workbook is considered “UX-complete enough” when:
-- headers are frozen,
-- key identifying columns are frozen,
-- filters exist,
-- actionable rows have clear color cues,
-- long text wraps where needed,
-- metric summary tabs use red/green/neutral signals,
-- operators can tell **where to look first** within 3 seconds.
+## 成功条件
+ある workbook を「UX として十分」とみなす条件:
+- header が freeze されている
+- 識別に必要な左列が freeze されている
+- filter がある
+- action が必要な行に明確な色 signal がある
+- 長文が必要な場所で wrap される
+- metric summary tab が red / green / neutral signal を持つ
+- operator が **3 秒以内に最初に見る場所を判断できる**

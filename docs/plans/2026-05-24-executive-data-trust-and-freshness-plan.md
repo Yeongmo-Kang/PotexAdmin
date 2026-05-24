@@ -1,98 +1,93 @@
-# Potex Executive Data Trust & Freshness Plan
+# Potex Executive データ信頼性・鮮度プラン
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Make the Executive workbook safe for daily management meetings by showing not just the current numbers, but also whether those numbers are fresh, where updates may be missing, and which operational area is likely causing mismatch risk.
+**Goal:** `Potex Executive` workbook を、日次の経営会議で安心して使える状態にする。単に現在値を見せるだけでなく、その数値が新しいか、どこで更新が止まっているか、どの業務領域にズレの危険があるかを見えるようにする。
 
-**Architecture:** Keep the existing Potex canonical DB + publish model. Do **not** turn the Executive workbook into another calculation-heavy spreadsheet. Instead, compute trust/freshness indicators in Apps Script during publish, render them as explicit management-facing signals, and preserve the legacy workbook’s strong Japanese, role-based, easy-to-read UX. When human update omissions are the reason numbers drift, expose the omission itself as a first-class signal.
+**Architecture:** 既存の Potex canonical DB + publish model を維持する。Executive workbook を計算だらけの spreadsheet にはしない。信頼性・鮮度の指標は Apps Script の publish 時に計算し、経営向けの分かりやすい signal として表示する。既存 workbook の「日本語・役割別・読みやすい UX」は保つ。人の更新漏れで数値がズレる場合は、その更新漏れ自体を signal として表に出す。
 
-**Tech Stack:** Google Apps Script (`potex-gas/src/`), existing publish pipeline (`publish/managementWorkbook.ts`, `publish/views.ts`), `Sync_Log`, canonical tables in `POTEX DB`, managed workbook manifest (`workbook_manifest.json`).
+**Tech Stack:** Google Apps Script (`potex-gas/src/`), 既存 publish pipeline (`publish/managementWorkbook.ts`, `publish/views.ts`), `Sync_Log`, `POTEX DB` の canonical tables, managed workbook manifest (`workbook_manifest.json`).
 
-**Repo Rule:** Treat GitHub `origin/main` as the primary source of truth for this plan and its follow-up implementation. The local workspace copy is a working tree / backup, not the primary handoff surface.
-
----
-
-## Why this plan exists
-
-The user’s requirement is now explicit:
-
-1. The workbook should remain easy for real operators and executives to read.
-2. Executives use the workbook in **daily meetings**.
-3. One cause of bad decisions is that **displayed numbers do not always match reality**.
-4. Another important cause is **human update omission** — some operators fail to update their area on time.
-5. Before or during a management meeting, the workbook should make it easy to see:
-   - whether the numbers are fresh enough to trust,
-   - which area is likely stale,
-   - and how to interpret numbers if an update was likely missed.
-
-This means the Executive workbook must move from a passive KPI view to a **decision-support + trust-status view**.
+**Repo Rule:** この plan と後続実装の primary source of truth は GitHub `origin/main` とする。ローカル workspace は作業 tree / backup として扱う。
 
 ---
 
-## Existing implementation we should build on
+## この plan が必要な理由
+ユーザー要件は次のとおり明確です。
 
-The current code already has useful foundations:
+1. workbook は、現場担当者にも経営にも読みやすい必要がある
+2. 経営は **毎日の会議** でこの workbook を使う
+3. 悪い意思決定の原因の 1 つは、**表示数値が実態と一致しないことがある** 点
+4. もう 1 つの大きな原因は、**人の更新漏れ**
+5. 会議の前や会議中に、次がすぐ分かる必要がある
+   - 数値を信じてよい鮮度か
+   - どの領域が古そうか
+   - 更新漏れがあるなら、数値をどう解釈すべきか
+
+つまり Executive workbook は、単なる KPI 表示ではなく **意思決定支援 + 信頼状態表示** に進む必要があります。
+
+---
+
+## 既存実装で活かせる土台
+現在の code には、すでに再利用できる基盤があります。
 
 - `potex-gas/src/publish/managementWorkbook.ts`
-  - publishes `経営_使い方`, `経営_コーチ負荷`, `経営_顧客リスク`, `経営_データ状況`, `経営_例外推移`
+  - `経営_使い方`, `経営_コーチ負荷`, `経営_顧客リスク`, `経営_データ状況`, `経営_例外推移` を publish 済み
 - `potex-gas/src/publish/views.ts`
-  - `buildExecReadme()` already defines a management reading order
-  - `buildExecDataHealth()` already emits canonical/exception health metrics
-  - `buildExecExceptionTrend()` already emits daily trend snapshots from `Sync_Log`
-  - there is already a working pattern for “stale” logic in partner assignment metrics (`partner_stale_30d_count`)
+  - `buildExecReadme()` に経営向けの読み順がある
+  - `buildExecDataHealth()` に canonical / exception health 指標がある
+  - `buildExecExceptionTrend()` に `Sync_Log` 由来の日次 trend がある
+  - partner assignment で stale 判定の先例（`partner_stale_30d_count`）がある
 - `potex-gas/src/logging.ts`
-  - `Sync_Log` exists and is already operator-readable
-  - publish/writeback/full refresh success timestamps are already available
+  - `Sync_Log` は存在し、operator が読める
+  - publish / writeback / full refresh の成功時刻を取れる
 
-This plan extends those foundations instead of inventing a parallel reporting system.
+この plan は、別の reporting system を作るのではなく、この土台を拡張します。
 
 ---
 
-## Product outcome
+## 目指す成果
+実装後、manager は 60 秒以内に次を答えられる状態を目指します。
 
-After implementation, the Executive workbook should let a manager answer these questions in under 60 seconds:
-
-1. **Are today’s numbers fresh enough to use?**
-2. **If not, which domain is stale?**
+1. **今日の数値は会議に使える鮮度か**
+2. **だめなら、どの領域が古いか**
    - sales / payments / CS review / coach assignment / partner status / line registration / feedback / continuation
-3. **Is the issue automation failure, sync lag, or human update omission?**
-4. **What is the likely decision bias if we proceed anyway?**
-   - e.g. “payments likely underreported”, “follow-up queue likely understated”, “partner progress likely stale”
-5. **What should the operator check first after the meeting?**
+3. **原因は自動処理失敗か、sync lag か、人の更新漏れか**
+4. **そのまま会議を進めると、どんな判断の偏りが起きそうか**
+   - 例: 「payments が少なく見える可能性」「follow-up queue が少なく見える可能性」
+5. **会議後に最初に何を確認すべきか**
 
 ---
 
 ## UX contract
 
-We are preserving the legacy workbook’s strengths while improving trust.
+### 維持するもの
+- 日本語の role-based naming
+- README-first の導線
+- 一目で見やすいこと
+- raw DB ではなく manager 向け summary を出すこと
 
-### Keep
-- Japanese role-based naming
-- README-first guidance
-- easy visual scanning
-- manager-facing summaries instead of raw DB surfaces
+### 追加するもの
+- 会議前の信頼性を確認する最上位ビュー
+- 鮮度 timestamp
+- stale domain の警告
+- 更新漏れの可能性を明示するヒント
+- 経営向けの短い解釈メモ
 
-### Add
-- a top-level “meeting trust” view
-- freshness timestamps
-- stale-domain warnings
-- explicit “likely missing update” hints
-- simple interpretation notes for executives
-
-### Do not add
-- giant explanation walls
-- raw technical debug output on executive tabs
-- formula webs in the workbook itself
-- spreadsheet-as-database behavior
+### 追加しないもの
+- 長い説明文の壁
+- executive tab 上の技術的 debug 出力
+- workbook 内の複雑な formula 網
+- spreadsheet-as-database の挙動
 
 ---
 
-## New Executive surfaces to add
+## 新しく追加する Executive surface
 
 ### 1. `経営_更新状況`
-Purpose: a meeting-prep and live-meeting freshness panel.
+目的: 会議前準備と会議中確認のための鮮度 panel。
 
-Expected columns:
+想定列:
 - `domain`
 - `status`
 - `last_effective_update_at_jst`
@@ -103,7 +98,7 @@ Expected columns:
 - `likely_decision_risk`
 - `recommended_check`
 
-Example domains:
+想定 domain:
 - `commercial_payments`
 - `sales_funnel`
 - `cs_alias_review`
@@ -115,20 +110,20 @@ Example domains:
 - `publish_pipeline`
 
 ### 2. `経営_会議前チェック`
-Purpose: a short red/orange/green checklist for the meeting owner.
+目的: 会議責任者向けの短い red / orange / green checklist。
 
-Expected rows:
+想定行:
 - Executive publish freshness OK?
 - Full refresh freshness OK?
 - Writeback freshness OK?
-- Any stale domains above threshold?
-- Any unresolved mismatch-risk domains?
-- Any domains likely underreported due to missed updates?
+- threshold 超えの stale domain はあるか?
+- 未解消の mismatch-risk domain はあるか?
+- 更新漏れが原因で過少表示の恐れがある domain はあるか?
 
-### 3. Expansion of `経営_データ状況`
-Purpose: keep it as the stable KPI/health summary, but add trust-facing metrics.
+### 3. `経営_データ状況` の拡張
+目的: 既存の KPI / health summary は維持しつつ、信頼性指標を足す。
 
-Add metrics like:
+追加候補 metric:
 - `last_publish_success_at_jst`
 - `last_full_refresh_success_at_jst`
 - `last_writeback_success_at_jst`
@@ -139,21 +134,19 @@ Add metrics like:
 
 ---
 
-## Freshness model
-
-We need an explicit freshness policy instead of implicit guessing.
+## 鮮度モデル
+暗黙の推測ではなく、明示的な鮮度 policy を持つ。
 
 ### Domain freshness policy
-Implement a small config object in code that defines, per domain:
+code 上に小さい config object を置き、domain ごとに次を定義する。
 - anchor source(s)
 - timestamp field(s)
 - fallback timestamp field(s)
 - expected update cadence
 - stale threshold
-- risk note if stale
+- stale 時の risk note
 
-Example policy sketch:
-
+例:
 ```ts
 {
   commercial_payments: {
@@ -177,55 +170,50 @@ Example policy sketch:
 }
 ```
 
-### Important distinction
-The logic must distinguish between:
-
+### 区別すべき 3 つ
 1. **Pipeline freshness**
-   - Was publish/writeback/full refresh actually run?
-
+   - publish / writeback / full refresh が動いたか
 2. **Operational data freshness**
-   - Did humans actually update the operational source/canonical rows?
-
+   - 人が元データを実際に更新したか
 3. **Mismatch risk**
-   - Even if publish ran, was the underlying business update omitted?
+   - publish が動いていても、業務側更新が漏れていないか
 
-This is the core user requirement.
+ここがユーザー要件の核心です。
 
 ---
 
-## Heuristic for “likely human update omission”
+## 「人の更新漏れらしい」を判定する heuristic
+完全証明は難しいので、明示的 heuristic として honest に出す。
 
-We cannot perfectly prove every omission, so we should implement explicit heuristics and label them honestly.
-
-### Label vocabulary
-Use user-friendly Japanese labels such as:
+### 表示ラベル語彙
+経営に見せるラベルは短い日本語にする。
 - `更新良好`
 - `要確認（更新遅れの可能性）`
 - `高リスク（会議前に確認推奨）`
 - `自動更新は成功 / 元データ更新漏れの可能性`
 - `自動更新自体が未実行の可能性`
 
-### Omission heuristics
-A domain should be flagged as likely human-update-omitted when:
-- publish is fresh enough **but** domain anchor data is old,
-- or row counts / queue states have not changed beyond expected cadence,
-- or downstream summary is current but upstream action rows still look untouched,
-- or “waiting first update” style metrics remain open longer than allowed,
-- or unresolved/open review counts remain static across multiple successful runs.
+### Omission heuristic
+次のようなとき、その domain を「人の更新漏れの可能性あり」とする。
+- publish は新しいのに domain anchor data が古い
+- 件数や queue 状態が想定 cadence を超えて変化していない
+- downstream summary は更新済みだが upstream action row が触られていない
+- 「初回更新待ち」系の件が長く残っている
+- unresolved/open review 件数が、成功 run を重ねても変わらない
 
-### Decision-support requirement
-When a domain is stale, we must show not only the stale state but also:
-- **what is likely missing**
-- **how that biases the displayed number**
+### 意思決定支援の要件
+stale と出すだけでなく、次も出す。
+- **何が抜けていそうか**
+- **そのせいで数値がどう偏るか**
 
-Examples:
-- payments stale → revenue/inflow may be undercounted
-- partner stale → progress may be understated or frozen on old statuses
-- CS review stale → unresolved alias/continuation queues may be larger than shown as “processed reality”
+例:
+- payments stale → 売上 / 入金が過少表示の可能性
+- partner stale → 進捗が止まって見える、または古い状態で固定される可能性
+- CS review stale → 未解決 queue は見えている数より多い可能性
 
 ---
 
-## Files to modify
+## 変更対象 file
 
 ### Primary code
 - Modify: `potex-gas/src/constants.ts`
@@ -240,200 +228,191 @@ Examples:
 - Modify: `agents/session.md`
 - Create: `docs/plans/2026-05-24-executive-data-trust-and-freshness-plan.md`
 
-### Optional if needed for formatting helpers
+### Optional
 - Modify: `potex-gas/src/sheets.ts`
 
 ---
 
-## Implementation phases
+## 実装 phase
 
-## Phase 0 — lock the vocabulary and signal contract
+## Phase 0 — 用語と signal contract を固定
 
-### Task 1: Define management trust vocabulary
-
-**Objective:** Standardize the statuses and notes that executives will see so implementation does not drift into ad-hoc wording.
+### Task 1: management trust の語彙を定義
+**Objective:** 経営向け status と note の文言ぶれを防ぐ。
 
 **Files:**
 - Modify: `docs/plans/2026-05-24-executive-data-trust-and-freshness-plan.md`
 - Modify later during implementation: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Define allowed `status` labels for freshness cards.
-2. Define allowed `likely_issue_type` labels.
-3. Define allowed `likely_decision_risk` note patterns.
-4. Keep them short, Japanese, and executive-readable.
+1. freshness card 用 `status` label を定義
+2. `likely_issue_type` label を定義
+3. `likely_decision_risk` note のパターンを定義
+4. 短く、日本語で、経営が読める言葉にする
 
 **Verification:**
-- The plan contains a stable vocabulary list.
-- No ambiguous English-like machine wording is exposed to managers.
+- plan 内に安定した vocabulary list がある
+- manager 向け表示に機械っぽい英語が混ざらない
 
-### Task 2: Define domain freshness policy table
-
-**Objective:** Decide which domains appear in `経営_更新状況` and what timestamp/threshold logic each uses.
+### Task 2: domain freshness policy table を定義
+**Objective:** `経営_更新状況` に出す domain と timestamp/threshold logic を決める。
 
 **Files:**
 - Modify later during implementation: `potex-gas/src/publish/views.ts`
 - Reference: `potex-gas/src/publish/managementWorkbook.ts`
 
 **Steps:**
-1. List the executive-relevant domains.
-2. For each, define:
+1. Executive に必要な domain を列挙
+2. 各 domain ごとに次を定義
    - source rows
-n   - primary timestamp fields
+   - primary timestamp fields
    - fallback timestamp fields
    - expected cadence
    - stale threshold
    - decision-risk note
-3. Keep policy in one central constant.
+3. policy を 1 つの定数に集約
 
 **Verification:**
-- Every domain in the new executive view has a deterministic source and threshold.
+- 新ビューの各 domain に deterministic な source と threshold がある
 
 ---
 
-## Phase 1 — add freshness computation helpers
+## Phase 1 — freshness 計算 helper を追加
 
-### Task 3: Add date/freshness utility helpers to `views.ts`
-
-**Objective:** Implement generic helpers for “hours since”, “latest usable timestamp”, and freshness classification.
+### Task 3: `views.ts` に date/freshness helper を追加
+**Objective:** 「経過時間」「使える最新 timestamp」「freshness 判定」を汎用 helper 化する。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Add helpers to parse timestamps from row fields safely.
-2. Add a helper to compute the latest timestamp across multiple candidate fields.
-3. Add a helper that returns:
+1. row field から安全に timestamp を読む helper を追加
+2. 複数候補から最新値を選ぶ helper を追加
+3. 次を返す helper を追加
    - latest timestamp
    - age
    - stale flag
    - stale severity
-4. Reuse the existing `daysSince` / date formatting patterns where possible.
+4. 可能なら既存の `daysSince` / date formatting pattern を再利用
 
 **Verification:**
-- Helpers can be used by both `経営_更新状況` and `経営_会議前チェック`.
-- No per-domain copy-paste date logic spreads across the file.
+- `経営_更新状況` と `経営_会議前チェック` の両方で使える
+- domain ごとのコピペ date logic が増えない
 
-### Task 4: Add `Sync_Log` extraction helpers for latest successful job timestamps
-
-**Objective:** Expose the newest successful publish, full refresh, and writeback timestamps cleanly.
+### Task 4: `Sync_Log` から最新成功 job timestamp を取る helper を追加
+**Objective:** publish / full refresh / writeback の最新成功時刻をきれいに取り出す。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 - Reference: `potex-gas/src/logging.ts`
 
 **Steps:**
-1. Parse `Sync_Log` rows once into reusable job summaries.
-2. Add helpers for:
+1. `Sync_Log` を 1 回 parse して reusable な job summary にする
+2. 次の helper を追加
    - latest `runPublishAll` success
    - latest `runFullRefresh` success
    - latest `runWritebackCollection` success
-3. Return formatted JST strings for display.
+3. 表示用に JST string を返す
 
 **Verification:**
-- The new helpers reuse the same source of truth as `buildExecExceptionTrend()`.
-- Timestamps are stable and displayable in executive-facing tabs.
+- `buildExecExceptionTrend()` と同じ source of truth を使う
+- 経営 tab で安定表示できる
 
 ---
 
-## Phase 2 — build new executive trust views
+## Phase 2 — 新しい Executive trust view を作る
 
-### Task 5: Add new view constants
-
-**Objective:** Register the new executive sheets in one place.
+### Task 5: view 定数を追加
+**Objective:** 新 sheet を一か所で管理する。
 
 **Files:**
 - Modify: `potex-gas/src/constants.ts`
 - Modify: `workbook_manifest.json`
 
 **Steps:**
-1. Add `VIEWS.EXEC_UPDATE_STATUS = '経営_更新状況'`.
-2. Add `VIEWS.EXEC_MEETING_CHECK = '経営_会議前チェック'`.
-3. Add the sheets to the workbook manifest for Executive workbook provisioning.
+1. `VIEWS.EXEC_UPDATE_STATUS = '経営_更新状況'` を追加
+2. `VIEWS.EXEC_MEETING_CHECK = '経営_会議前チェック'` を追加
+3. manifest にも追加
 
 **Verification:**
-- The workbook can auto-create both tabs during publish.
+- publish 時に両 tab を自動生成できる
 
-### Task 6: Implement `buildExecUpdateStatus()`
-
-**Objective:** Create the main executive freshness/status table.
+### Task 6: `buildExecUpdateStatus()` を実装
+**Objective:** 経営向けの主要な鮮度 / 状態 table を作る。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Create the header:
+1. header を作成
    - `domain`, `status`, `last_effective_update_at_jst`, `expected_cadence`, `stale_threshold`, `stale_by`, `likely_issue_type`, `likely_decision_risk`, `recommended_check`
-2. Implement one row per domain using the freshness policy.
-3. Distinguish:
+2. freshness policy に従って domain ごとに 1 行作る
+3. 次を区別する
    - publish stale
    - writeback stale
    - source-data stale
    - likely human omission
-4. Make the notes human-readable and meeting-oriented.
+4. note は会議で読める自然な文にする
 
 **Verification:**
-- The resulting tab can be read top-to-bottom without opening DB tabs.
-- A manager can identify the likely stale area in under 1 minute.
+- DB tab を開かなくても上から下へ読める
+- 1 分以内に stale な領域を特定できる
 
-### Task 7: Implement `buildExecMeetingCheck()`
-
-**Objective:** Create a short meeting gate/checklist that says whether to trust today’s meeting deck.
+### Task 7: `buildExecMeetingCheck()` を実装
+**Objective:** 会議をそのまま始めてよいかを短く示す checklist を作る。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Add checklist rows such as:
+1. checklist 行を追加
    - publish freshness
    - full refresh freshness
    - writeback freshness
    - stale domains present?
    - high-risk stale domains present?
    - likely human-update omissions present?
-2. Add a final synthesized overall status:
+2. 最終的な overall status を出す
    - `GO`
    - `GO_WITH_CAUTION`
    - `CHECK_BEFORE_MEETING`
-3. Add one short interpretation line for executives.
+3. 経営向けに短い interpretation line を 1 行足す
 
 **Verification:**
-- A meeting owner can decide whether to proceed as-is or verify numbers first.
+- 会議責任者が、そのまま進めるか確認を先にするか判断できる
 
-### Task 8: Extend `buildExecDataHealth()` with trust metrics
-
-**Objective:** Keep the existing KPI/health table, but add meeting trust metrics to it.
+### Task 8: `buildExecDataHealth()` に trust metric を追加
+**Objective:** 既存 KPI/health table を残しつつ、会議向け trust metric も載せる。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Add publish/writeback/full-refresh latest success timestamps.
-2. Add stale-domain counters.
-3. Add likely-human-omission counters.
-4. Add a summary `meeting_risk_status` metric.
+1. publish / writeback / full-refresh の最新成功時刻を追加
+2. stale-domain count を追加
+3. likely-human-omission count を追加
+4. 要約 `meeting_risk_status` を追加
 
 **Verification:**
-- `経営_データ状況` remains compact but now reflects trust state, not only raw counts.
+- `経営_データ状況` が compact なまま、件数だけでなく trust 状態も伝える
 
 ---
 
-## Phase 3 — wire the new views into publish
+## Phase 3 — publish flow に組み込む
 
-### Task 9: Update `publishExecutiveWorkbook()`
-
-**Objective:** Publish the new management trust tabs alongside existing executive tabs.
+### Task 9: `publishExecutiveWorkbook()` を更新
+**Objective:** 新しい trust tab を既存 Executive tab と一緒に publish する。
 
 **Files:**
 - Modify: `potex-gas/src/publish/managementWorkbook.ts`
 
 **Steps:**
-1. Read any additional source rows required for freshness heuristics.
-2. Call:
+1. 必要なら freshness heuristic 用 source row を追加で読む
+2. 次を呼ぶ
    - `buildExecUpdateStatus(...)`
    - `buildExecMeetingCheck(...)`
-3. `clearAndRewrite()` them into the Executive workbook.
-4. Keep the existing publish order sensible:
+3. Executive workbook に `clearAndRewrite()` する
+4. 既存の publish 順を読みやすく保つ
    - `経営_使い方`
    - `経営_会議前チェック`
    - `経営_更新状況`
@@ -442,199 +421,189 @@ n   - primary timestamp fields
    - detail tabs
 
 **Verification:**
-- A single publish run creates and fills the new tabs.
-- The reading order matches the README guidance.
+- 1 回の publish で新 tab が作成・更新される
+- README の読み順と一致する
 
-### Task 10: Update `buildExecReadme()` reading order
-
-**Objective:** Make the Executive README explicitly point managers to freshness/trust first.
+### Task 10: `buildExecReadme()` の読み順を更新
+**Objective:** まず trust/freshness を見る導線に変える。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. Change `read_first` to:
+1. `read_first` を次の順に変更
    - `経営_会議前チェック`
-   - then `経営_更新状況`
-   - then `経営_データ状況`
-   - then `経営_例外推移`
-2. Add one line explaining that stale warnings may reflect human update omission, not just automation failure.
+   - `経営_更新状況`
+   - `経営_データ状況`
+   - `経営_例外推移`
+2. stale warning は automation failure だけでなく human update omission も含むと 1 行で説明
 
 **Verification:**
-- The README matches the new management workflow.
+- README が新しい会議フローを案内できる
 
 ---
 
-## Phase 4 — make omission risk easier to interpret
+## Phase 4 — 更新漏れリスクを解釈しやすくする
 
-### Task 11: Add domain-specific “likely decision bias” notes
-
-**Objective:** Help executives reason safely even when updates are missing.
+### Task 11: domain ごとの「判断の偏り」note を追加
+**Objective:** 更新が抜けていても、経営が安全に解釈できるようにする。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. For each stale domain, add a short bias note.
-2. Keep the notes specific and practical.
+1. stale domain ごとに短い bias note を出す
+2. 抽象的ではなく実務的に書く
 
-Example patterns:
+例:
 - payments stale → `入金実績は実態より少なく見える可能性`
 - partner stale → `進捗停滞に見えるが未更新の可能性`
 - CS review stale → `未解決件数は見えている数より多い可能性`
 - followup stale → `顧客リスクは実態より過少表示の可能性`
 
 **Verification:**
-- A manager can understand how to discount the number, not just that it is stale.
+- manager が「古い」だけでなく「どんな方向にずれるか」を理解できる
 
-### Task 12: Add recommended check pointers
-
-**Objective:** Point operators to the likely fix location quickly.
+### Task 12: recommended check を追加
+**Objective:** 次に誰がどこを見るべきかをすぐ分かるようにする。
 
 **Files:**
 - Modify: `potex-gas/src/publish/views.ts`
 
 **Steps:**
-1. For each domain, expose a `recommended_check` field.
-2. Use workbook/tab-oriented guidance, not technical internals.
+1. domain ごとに `recommended_check` を出す
+2. 技術内部ではなく workbook / tab ベースの案内にする
 
-Examples:
+例:
 - `Potex CS > CS_入金名寄せ確認 / writeback 実行履歴`
 - `POTEX DB > Sync_Log`
 - `担当者の元シート更新漏れ確認`
 - `partner status 入力欄 / last_partner_update_at`
 
 **Verification:**
-- The executive workbook itself is enough to triage the next check owner.
+- Executive workbook だけで次の確認先を切り分けられる
 
 ---
 
-## Phase 5 — formatting and operator clarity
+## Phase 5 — formatting と視認性
 
-### Task 13: Add clear status-first formatting to the new tabs
-
-**Objective:** Make the new executive trust tabs readable in daily meetings.
+### Task 13: 新 tab に status-first formatting を追加
+**Objective:** 日次会議で一目で使える見た目にする。
 
 **Files:**
 - Modify if needed: `potex-gas/src/sheets.ts`
-- Modify if needed: any existing workbook formatting helper used for Executive workbook
+- Modify if needed: Executive workbook 用 formatting helper
 
 **Steps:**
-1. Freeze headers.
-2. Add filters.
-3. Apply tab color.
-4. Add conditional formatting:
-   - red for high-risk stale
-   - orange for warning
-   - green for healthy
-5. Widen note columns for management readability.
+1. header freeze
+2. filter 追加
+3. tab color 追加
+4. conditional formatting 追加
+   - 高リスク stale は赤
+   - warning は橙
+   - healthy は緑
+5. note 列を広げる
 
 **Verification:**
-- The new tabs are scannable during a live meeting without horizontal struggle.
+- 会議中に横スクロール地獄にならず読める
 
 ---
 
-## Phase 6 — docs and rollout
+## Phase 6 — docs と rollout
 
-### Task 14: Update `OPERATIONS_MANUAL.md`
-
-**Objective:** Explain how to interpret freshness warnings and omission-risk signals.
+### Task 14: `OPERATIONS_MANUAL.md` を更新
+**Objective:** 鮮度 warning と更新漏れ signal の読み方を説明する。
 
 **Files:**
 - Modify: `OPERATIONS_MANUAL.md`
 
 **Steps:**
-1. Add sections for `経営_会議前チェック` and `経営_更新状況`.
-2. Explain the difference between:
+1. `経営_会議前チェック` と `経営_更新状況` の説明を追加
+2. 次の違いを説明
    - automation lag
    - sync lag
    - human update omission
-3. Add “what to do before the meeting” and “what to do after the meeting” guidance.
+3. 「会議前にすること」「会議後にすること」を追加
 
 **Verification:**
-- A non-technical operator can explain a stale warning to management.
+- 非技術者でも stale warning の説明ができる
 
-### Task 15: Update session/backlog state
-
-**Objective:** Preserve the plan and mark the new workstream clearly.
+### Task 15: session / backlog を更新
+**Objective:** workstream を再開しやすく残す。
 
 **Files:**
 - Modify: `docs/backlog.md`
 - Modify: `agents/session.md`
 
 **Steps:**
-1. Add this effort as an active or next-priority executive reliability workstream.
-2. Note the new user requirement explicitly: update omissions must be visible before/during meetings.
-3. Record the intended workbook surfaces.
+1. この施策を active または next-priority workstream として記録
+2. 「会議前/会議中に更新漏れが見えること」が新要件だと明記
+3. 対応する workbook surface を記録
 
 **Verification:**
-- The next session can resume implementation without rediscovering the problem statement.
+- 次の session が問題設定を掘り直さずに再開できる
 
 ---
 
 ## Acceptance checklist
-
-Implementation is complete only when all are true:
-
-- [ ] Executive workbook has a `経営_会議前チェック` tab.
-- [ ] Executive workbook has a `経営_更新状況` tab.
-- [ ] README reading order points to freshness/trust first.
-- [ ] `経営_データ状況` includes trust/freshness metrics.
-- [ ] Stale-domain detection distinguishes pipeline freshness from human update omission.
-- [ ] Each stale domain includes a likely decision-risk note.
-- [ ] Each stale domain includes a recommended next check.
-- [ ] New tabs are visually scannable in a live meeting.
-- [ ] Runbooks explain how to interpret the warnings.
+実装完了条件:
+- [ ] Executive workbook に `経営_会議前チェック` tab がある
+- [ ] Executive workbook に `経営_更新状況` tab がある
+- [ ] README の読み順が freshness/trust 優先になっている
+- [ ] `経営_データ状況` に trust/freshness metric がある
+- [ ] stale-domain 判定が pipeline freshness と human update omission を区別する
+- [ ] 各 stale domain に decision-risk note がある
+- [ ] 各 stale domain に recommended next check がある
+- [ ] 新 tab が会議中に一目で読める
+- [ ] runbook に warning の解釈方法がある
 
 ---
 
 ## Verification plan
 
 ### Functional verification
-1. Run publish.
-2. Confirm new tabs exist in `Potex Executive`.
-3. Confirm values populate without formulas in the workbook surface.
-4. Confirm README references the new tabs.
+1. publish を実行
+2. `Potex Executive` に新 tab ができることを確認
+3. workbook 内 formula に頼らず値が入ることを確認
+4. README が新 tab を案内していることを確認
 
 ### Behavior verification
-1. Simulate stale publish / stale writeback / stale source updates.
-2. Confirm status labels change correctly.
-3. Confirm likely issue type changes correctly.
-4. Confirm decision-risk notes match the domain.
+1. stale publish / stale writeback / stale source update を疑似的に作る
+2. status label が正しく変わることを確認
+3. `likely_issue_type` が正しく変わることを確認
+4. decision-risk note が domain と一致することを確認
 
 ### Meeting usability verification
-1. Open only the Executive workbook.
-2. Check whether a human can answer within 1 minute:
-   - are numbers trustworthy?
-   - what is stale?
-   - what decision caveat applies?
-   - what should be checked next?
+1. Executive workbook だけを開く
+2. 1 分以内に次へ答えられるか確認
+   - 数値は信頼できるか
+   - 何が stale か
+   - どんな判断上の注意があるか
+   - 次に何を確認すべきか
 
 ---
 
-## Recommended implementation order
-
-1. Task 5 — add constants/manifest
-2. Task 3 — freshness utility helpers
-3. Task 4 — Sync_Log timestamp helpers
+## 推奨実装順
+1. Task 5 — constants / manifest 追加
+2. Task 3 — freshness utility helper
+3. Task 4 — `Sync_Log` timestamp helper
 4. Task 6 — `buildExecUpdateStatus()`
 5. Task 7 — `buildExecMeetingCheck()`
-6. Task 8 — extend `buildExecDataHealth()`
-7. Task 9 — wire publish flow
-8. Task 10 — update README reading order
-9. Task 11 — decision-bias notes
-10. Task 12 — recommended check hints
+6. Task 8 — `buildExecDataHealth()` 拡張
+7. Task 9 — publish flow 組み込み
+8. Task 10 — README 読み順更新
+9. Task 11 — decision-bias note
+10. Task 12 — recommended check hint
 11. Task 13 — formatting
-12. Task 14/15 — docs and state updates
+12. Task 14/15 — docs / state 更新
 
 ---
 
-## Final implementation note
+## 最後の実装メモ
+この機能は、見栄え改善ではなく **意思決定の安全装置** として扱うべきです。ユーザーの本当の懸念は「dashboard UX を少し良くしたい」ではなく、次の理由で manager が誤判断しないようにすることです。
 
-This feature should be treated as a **decision safety system**, not a cosmetic reporting enhancement. The user’s core concern is not merely “better dashboard UX,” but preventing managers from making the wrong call because:
+- 表示数値が stale
+- automation は動いたが担当者の更新が抜けた
+- workbook がその抜けを隠してしまう
 
-- the displayed number is stale,
-- the automation ran but the operators did not update their part,
-- or the workbook hides the omission instead of surfacing it.
-
-That requirement must stay visible in every implementation choice.
+この要件は、すべての実装判断で見える場所に置き続けます。

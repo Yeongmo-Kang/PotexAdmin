@@ -1,40 +1,40 @@
-# P-003 Alias / Writeback Acceptance Runbook
+# P-003 Alias / Writeback 受け入れ runbook
 
-## Goal
-Prove that the live Potex CS workbook can close one unmatched customer case end-to-end without editing the canonical DB workbook directly.
+## 目的
+本 runbook の目的は、live の `Potex CS` workbook だけで、未一致の顧客 1 件を **canonical DB workbook を直接編集せずに** 最後まで解消できることを確認することです。
 
-This is the acceptance gate between:
-- **Phase 1 deployed** and
+これは次の間にある受け入れゲートです。
+- **Phase 1 deployed**
 - **Phase 1 operationally ready**
 
 ---
 
-## Why this matters
-The current system is only truly usable for non-technical operators if this loop works:
+## 重要な理由
+非技術者の運用担当が日常的に使えると言うためには、次の流れが確実に動く必要があります。
 
-1. GAS publishes unmatched rows into `CS_別名解決入力`
-2. A CS operator resolves the alias there
-3. GAS writes the decision back into `Customer_Alias_Map`
-4. GAS republishes derived views
-5. The unresolved exception is reduced or removed
+1. GAS が未解決行を `CS_別名解決入力` に publish する
+2. CS 担当者がその場で alias を解決する
+3. GAS が判断結果を `Customer_Alias_Map` に writeback する
+4. GAS が派生ビューを再 publish する
+5. 未解決 exception が減る、または消える
 
-If this loop fails, the workbook split is still only partially operational.
-
----
-
-## Preconditions
-These must already be true:
-- Apps Script project is deployed
-- `bootstrapProject()` succeeded
-- `installTriggers()` succeeded
-- `runCanonicalRefresh()` succeeded
-- `runPublishAll()` succeeded
-- `Potex CS` workbook contains `CS_別名解決入力`
-- `POTEX DB` workbook contains `Customer_Alias_Map` and `Exceptions_FeedbackMatch`
+この流れが壊れている場合、workbook 分割はまだ一部しか運用化できていません。
 
 ---
 
-## Workbooks involved
+## 前提条件
+以下がすでに成立していること。
+- Apps Script project が deploy 済み
+- `bootstrapProject()` が成功済み
+- `installTriggers()` が成功済み
+- `runCanonicalRefresh()` が成功済み
+- `runPublishAll()` が成功済み
+- `Potex CS` workbook に `CS_別名解決入力` がある
+- `POTEX DB` workbook に `Customer_Alias_Map` と `Exceptions_FeedbackMatch` がある
+
+---
+
+## 対象 workbook
 - `POTEX DB`
   - https://docs.google.com/spreadsheets/d/1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs/edit?usp=drivesdk
 - `Potex CS`
@@ -42,148 +42,148 @@ These must already be true:
 
 ---
 
-## Recommended test scope
-Use **exactly one** low-risk row for the first acceptance test.
+## 推奨テスト範囲
+最初の受け入れテストでは、**必ず 1 行だけ**、かつ低リスクのケースを使います。
 
-You can inspect current unresolved candidates from the local workspace with:
+ローカル workspace で現在の未解決候補を確認する方法:
 ```bash
 cd /mnt/c/Users/zerom/Desktop/DevZero/projects/potex
 python inspect_phase1_alias_candidates.py
 ```
 
-Current live snapshot at the time this runbook was written:
-- unresolved alias count in `Potex CS`: `1`
-- unresolved exception count in `POTEX DB`: `1`
-- current low-risk candidate:
+この runbook 作成時点の live snapshot:
+- `Potex CS` の unresolved alias count: `1`
+- `POTEX DB` の unresolved exception count: `1`
+- 現在の低リスク候補:
   - `alias_name`: `知子佐藤`
   - `respondent_email`: `cerena999@yahoo.co.jp`
   - `source_sheet`: `通常月用`
   - `source_row`: `35`
-  - top suggested canonical candidate: `CUST-0065 / 佐藤知子`
-  - suggestion reason: same coach + likely surname/given-name swap
+  - 候補 canonical customer: `CUST-0065 / 佐藤知子`
+  - 推定理由: 同じ coach で、姓と名の入れ替わりの可能性が高い
 
-Pick a row in `CS_別名解決入力` where:
-- the customer identity is already obvious to a human
-- there is low ambiguity
-- the operator can confidently map it to one existing canonical customer
+`CS_別名解決入力` で選ぶ行の条件:
+- 人が見て顧客がほぼ確実に分かる
+- あいまいさが小さい
+- 既存 canonical customer 1 件に自信を持って紐付けできる
 
-Do **not** use a borderline or disputed match for the first acceptance run.
+最初の受け入れでは、判断が割れるケースや微妙なケースは使わないでください。
 
 ---
 
-## Editable columns
-In `CS_別名解決入力`, only edit these columns:
+## 編集してよい列
+`CS_別名解決入力` では、次の列だけ編集します。
 - `operator_decision_status`
 - `operator_selected_customer_id`
 - `operator_selected_customer_name`
 - `operator_note`
 
-Do not edit published source/current-state columns.
+publish された元データ列や current-state 列は編集しません。
 
 ---
 
-## Step-by-step acceptance test
+## 受け入れテスト手順
 
-### Step 1. Capture baseline
-Before editing anything, note these facts for the chosen row:
+### Step 1. baseline を記録
+編集前に、対象行について次を控えます。
 - `alias_name`
 - `respondent_email`
 - `source_sheet`
 - `source_row`
-- current `sync_status`
-- whether a matching row exists in `Exceptions_FeedbackMatch`
+- 現在の `sync_status`
+- `Exceptions_FeedbackMatch` に対応行があるか
 
-Also note current counts, if visible:
-- row count in `Exceptions_FeedbackMatch`
-- whether the alias already exists in `Customer_Alias_Map`
+見える場合は次も記録します。
+- `Exceptions_FeedbackMatch` の行数
+- この alias がすでに `Customer_Alias_Map` に存在するか
 
-### Step 2. Enter operator decision
-In `Potex CS` → `CS_別名解決入力`, fill:
+### Step 2. operator の判断を入力
+`Potex CS` → `CS_別名解決入力` で次を入力します。
 - `operator_decision_status` = `approved`
-- `operator_selected_customer_id` = the known canonical customer ID
-- `operator_selected_customer_name` = the known canonical customer name
-- `operator_note` = short reason, e.g. `phase1 acceptance test`
+- `operator_selected_customer_id` = 正しい canonical customer ID
+- `operator_selected_customer_name` = 正しい canonical customer 名
+- `operator_note` = 短い理由。例: `phase1 acceptance test`
 
-### Step 3. Run writeback
-In Apps Script, run:
+### Step 3. writeback を実行
+Apps Script で次を実行します。
 - `runWritebackCollection()`
 
-Expected result:
-- script finishes successfully
-- no validation error about missing customer ID or missing customer name
+期待結果:
+- script が正常終了する
+- customer ID / customer name 不足の validation error が出ない
 
-### Step 4. Run republish
-In Apps Script, run:
+### Step 4. 再 publish を実行
+Apps Script で次を実行します。
 - `runPublishAll()`
 
-Expected result:
-- script finishes successfully
-- CS published views refresh from DB state
+期待結果:
+- script が正常終了する
+- CS 側 publish view が DB の最新状態で更新される
 
-### Step 5. Verify DB-side writeback
-Open `POTEX DB` and verify:
-- `Customer_Alias_Map` contains a row for the alias
-- the row has the selected canonical customer ID
-- the row has the selected canonical customer name
-- the row status is approval-like (`approved`, `active`, or `resolved` depending on flow)
+### Step 5. DB 側 writeback を確認
+`POTEX DB` を開き、次を確認します。
+- `Customer_Alias_Map` に対象 alias の行がある
+- その行に選択した canonical customer ID が入っている
+- その行に選択した canonical customer 名が入っている
+- 行の status が承認済み相当である（`approved` / `active` / `resolved` など flow に応じた値）
 
-### Step 6. Verify exception closure
-Open `Exceptions_FeedbackMatch` and confirm one of these is true:
-- the specific unresolved row is gone
-- or the unresolved count decreased as expected
+### Step 6. exception 解消を確認
+`Exceptions_FeedbackMatch` を開き、次のどちらかを確認します。
+- 対象の未解決行が消えた
+- もしくは unresolved count が想定どおり減った
 
-### Step 7. Verify downstream feedback effects
-Check whether the previously blocked case now appears correctly in:
+### Step 7. downstream への反映を確認
+以前は止まっていたケースが、次に正しく現れるか確認します。
 - `Feedback`
 - `Ops_Feedback_Review`
 
-Expected result:
-- the matched case is now represented with canonical customer linkage
+期待結果:
+- 対象ケースが canonical customer に紐付いた状態で反映される
 
-### Step 8. Verify CS-side status
-Return to `Potex CS` → `CS_別名解決入力` and confirm the tested row is now either:
-- removed from the unresolved publish set
-- or marked with processed sync state in the way the flow intends
+### Step 8. CS 側の状態を確認
+`Potex CS` → `CS_別名解決入力` に戻り、対象行が次のどちらかになっていることを確認します。
+- 未解決 publish set から消えている
+- もしくは flow の想定どおり処理済み状態になっている
 
 ---
 
-## Pass / fail criteria
+## Pass / fail 基準
 
 ### PASS
-Mark this acceptance run as PASS if all are true:
-- `runWritebackCollection()` succeeds
-- `runPublishAll()` succeeds
-- `Customer_Alias_Map` is updated correctly
-- the relevant unresolved exception is removed or reduced
-- the linked feedback/op-review records reflect the resolved customer
-- the operator did not need to touch the canonical DB workbook manually
+次がすべて成立したら PASS とします。
+- `runWritebackCollection()` が成功
+- `runPublishAll()` が成功
+- `Customer_Alias_Map` が正しく更新された
+- 対象の unresolved exception が削除または減少した
+- 関連する feedback / op-review が解決済み顧客に紐付いた
+- operator が canonical DB workbook を手で直す必要がなかった
 
 ### FAIL
-Mark this run as FAIL if any of these happen:
-- writeback function errors
-- alias row remains unresolved with no DB update
-- wrong customer is written
-- published views do not reflect the DB change after republish
-- operator had to repair canonical data manually
+次のどれかが起きたら FAIL とします。
+- writeback function が error になる
+- alias 行が未解決のままで DB 更新もない
+- 間違った customer に書き込まれる
+- 再 publish 後も DB 変更が publish view に反映されない
+- operator が canonical data を手修正しないと直らない
 
 ---
 
-## If it fails
-Capture and report:
-- which step failed
-- exact Apps Script error text
-- the chosen row’s `alias_name`
-- the chosen row’s `source_sheet` and `source_row`
-- whether `Customer_Alias_Map` changed at all
-- whether `Exceptions_FeedbackMatch` changed at all
+## 失敗したときに残す情報
+次を記録して報告します。
+- どの step で失敗したか
+- Apps Script の正確な error text
+- 対象行の `alias_name`
+- 対象行の `source_sheet` と `source_row`
+- `Customer_Alias_Map` が少しでも変わったか
+- `Exceptions_FeedbackMatch` が少しでも変わったか
 
-That is enough context to debug without broad guessing.
+この情報があれば、広く推測せずに切り分けできます。
 
 ---
 
-## What this unlocks if it passes
-If this acceptance test passes, the next safest implementation direction is:
-1. mark Phase 1 operationally ready
-2. expand refresh-driven ops surfaces (P-005)
-3. only then plan `Potex Concierge`
-4. keep `Potex Sales` behind commercial-model completion (`Plans`, `Payments`, `ConversionHistory`)
+## これが通ると何が進められるか
+この受け入れテストが通ったら、次に安全なのは次の順です。
+1. Phase 1 を operationally ready と判断する
+2. refresh 駆動の ops surface 拡張（P-005）を進める
+3. その後で `Potex Concierge` を計画する
+4. `Potex Sales` は commercial model 完成（`Plans`, `Payments`, `ConversionHistory`）の後に進める
