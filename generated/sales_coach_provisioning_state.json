@@ -1,0 +1,195 @@
+{
+  "sales": {
+    "spreadsheet_id": "1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao",
+    "name": "Potex Sales",
+    "url": "https://docs.google.com/spreadsheets/d/1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao/edit?usp=drivesdk",
+    "expected_tabs": [
+      "Sales_README",
+      "Sales_Contracts_View",
+      "Sales_Pending_Payments",
+      "Sales_Funnel_Events",
+      "Sales_Data_Health"
+    ],
+    "actual_tabs": [
+      "Sales_README",
+      "Sales_Contracts_View",
+      "Sales_Pending_Payments",
+      "Sales_Funnel_Events",
+      "Sales_Data_Health"
+    ],
+    "extra_tabs": [],
+    "missing_tabs": [],
+    "tabs": {
+      "Sales_README": {
+        "present": true,
+        "expected_header_len": 2,
+        "actual_header_len": 2,
+        "header_match": true,
+        "data_row_count": 5,
+        "actual_header": [
+          "section",
+          "content"
+        ]
+      },
+      "Sales_Contracts_View": {
+        "present": true,
+        "expected_header_len": 18,
+        "actual_header_len": 18,
+        "header_match": true,
+        "data_row_count": 136,
+        "actual_header": [
+          "priority",
+          "contract_date",
+          "paid_date",
+          "payment_status",
+          "customer_id",
+          "canonical_customer_name",
+          "payment_customer_name",
+          "payment_line_name",
+          "sales_owner_name",
+          "plan_name",
+          "amount",
+          "segment",
+          "current_status",
+          "assigned_coach_name",
+          "customer_match_method",
+          "source_sheet",
+          "source_row",
+          "note"
+        ]
+      },
+      "Sales_Pending_Payments": {
+        "present": true,
+        "expected_header_len": 14,
+        "actual_header_len": 14,
+        "header_match": true,
+        "data_row_count": 85,
+        "actual_header": [
+          "priority",
+          "contract_date",
+          "customer_id",
+          "canonical_customer_name",
+          "payment_customer_name",
+          "sales_owner_name",
+          "plan_name",
+          "amount",
+          "segment",
+          "current_status",
+          "assigned_coach_name",
+          "customer_match_method",
+          "source_sheet",
+          "source_row"
+        ]
+      },
+      "Sales_Funnel_Events": {
+        "present": true,
+        "expected_header_len": 8,
+        "actual_header_len": 8,
+        "header_match": true,
+        "data_row_count": 660,
+        "actual_header": [
+          "event_date",
+          "event_type",
+          "customer_id",
+          "customer_name",
+          "current_status",
+          "assigned_coach_name",
+          "changed_by",
+          "note"
+        ]
+      },
+      "Sales_Data_Health": {
+        "present": true,
+        "expected_header_len": 3,
+        "actual_header_len": 3,
+        "header_match": true,
+        "data_row_count": 8,
+        "actual_header": [
+          "metric",
+          "value",
+          "note"
+        ]
+      }
+    }
+  },
+  "coaches": {
+    "spreadsheet_id": "19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc",
+    "name": "Potex Coaches",
+    "url": "https://docs.google.com/spreadsheets/d/19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc/edit?usp=drivesdk",
+    "expected_tabs": [
+      "Coach_README",
+      "Coach_Load",
+      "Coach_Followup_Alerts",
+      "Coach_Data_Health"
+    ],
+    "actual_tabs": [
+      "Coach_README",
+      "Coach_Load",
+      "Coach_Followup_Alerts",
+      "Coach_Data_Health"
+    ],
+    "extra_tabs": [],
+    "missing_tabs": [],
+    "tabs": {
+      "Coach_README": {
+        "present": true,
+        "expected_header_len": 2,
+        "actual_header_len": 2,
+        "header_match": true,
+        "data_row_count": 5,
+        "actual_header": [
+          "section",
+          "content"
+        ]
+      },
+      "Coach_Load": {
+        "present": true,
+        "expected_header_len": 7,
+        "actual_header_len": 7,
+        "header_match": true,
+        "data_row_count": 38,
+        "actual_header": [
+          "coach_id",
+          "coach_name",
+          "active_customer_count",
+          "session_count",
+          "followup_customer_count",
+          "low_satisfaction_feedback_count",
+          "remaining_capacity"
+        ]
+      },
+      "Coach_Followup_Alerts": {
+        "present": true,
+        "expected_header_len": 10,
+        "actual_header_len": 10,
+        "header_match": true,
+        "data_row_count": 18,
+        "actual_header": [
+          "priority",
+          "feedback_id",
+          "feedback_date",
+          "customer_id",
+          "customer_name",
+          "coach_name",
+          "followup_reason",
+          "low_satisfaction_flag",
+          "comment",
+          "gap_comment"
+        ]
+      },
+      "Coach_Data_Health": {
+        "present": true,
+        "expected_header_len": 3,
+        "actual_header_len": 3,
+        "header_match": true,
+        "data_row_count": 6,
+        "actual_header": [
+          "metric",
+          "value",
+          "note"
+        ]
+      }
+    }
+  },
+  "verdict": "provisioned_and_headers_match"
+}

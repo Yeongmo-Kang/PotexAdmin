@@ -1,0 +1,32 @@
+{
+  "db": {
+    "spreadsheet_id": "1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs",
+    "name": "POTEX DB",
+    "url": "https://docs.google.com/spreadsheets/d/1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs/edit?usp=drivesdk"
+  },
+  "cs": {
+    "spreadsheet_id": "1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg",
+    "name": "Potex CS",
+    "url": "https://docs.google.com/spreadsheets/d/1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg/edit?usp=drivesdk"
+  },
+  "concierge": {
+    "spreadsheet_id": "1c-Ie03M619iMqhwqV1jHPSYDVPTMHPPKs6zhSr8QPr8",
+    "name": "Potex Concierge",
+    "url": "https://docs.google.com/spreadsheets/d/1c-Ie03M619iMqhwqV1jHPSYDVPTMHPPKs6zhSr8QPr8/edit?usp=drivesdk"
+  },
+  "executive": {
+    "spreadsheet_id": "1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY",
+    "name": "Potex Executive",
+    "url": "https://docs.google.com/spreadsheets/d/1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY/edit?usp=drivesdk"
+  },
+  "sales": {
+    "spreadsheet_id": "1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao",
+    "name": "Potex Sales",
+    "url": "https://docs.google.com/spreadsheets/d/1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao/edit?usp=drivesdk"
+  },
+  "coaches": {
+    "spreadsheet_id": "19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc",
+    "name": "Potex Coaches",
+    "url": "https://docs.google.com/spreadsheets/d/19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc/edit?usp=drivesdk"
+  }
+}

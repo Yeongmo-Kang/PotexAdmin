@@ -1,0 +1,3 @@
+# Project-specific Hermes configuration
+# This file overrides global config when using --config-file option
+# or when placed at ~/.hermes/projects/

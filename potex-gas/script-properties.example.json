@@ -1,0 +1,12 @@
+{
+  "DB_SPREADSHEET_ID": "",
+  "CS_SPREADSHEET_ID": "",
+  "CONCIERGE_SPREADSHEET_ID": "",
+  "SALES_SPREADSHEET_ID": "",
+  "COACHES_SPREADSHEET_ID": "",
+  "EXEC_SPREADSHEET_ID": "",
+  "ENABLE_CONCIERGE": "false",
+  "ENABLE_SALES": "false",
+  "ENABLE_COACHES": "false",
+  "ENABLE_EXEC": "true"
+}

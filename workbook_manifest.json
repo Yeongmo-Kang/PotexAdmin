@@ -1,0 +1,361 @@
+{
+  "phase1": {
+    "db": {
+      "name": "POTEX DB",
+      "existing_spreadsheet_id": "1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs",
+      "required_tabs": [
+        "Staging_Customers",
+        "Staging_Coaches",
+        "Staging_Sessions",
+        "Staging_Feedback",
+        "Staging_Payments",
+        "Staging_LineRegistration",
+        "Customers",
+        "Coaches",
+        "Sessions",
+        "Feedback",
+        "Plans",
+        "Payments",
+        "ConversionHistory",
+        "Customer_Coach_Assignments",
+        "Customer_Partner_Assignments",
+        "Customer_Channel_Links",
+        "Coach_Name_Map",
+        "Coach_Alias_Map",
+        "Customer_Alias_Map",
+        "Partners",
+        "Partner_Alias_Map",
+        "Partner_Pipeline_Status",
+        "Exceptions_FeedbackMatch",
+        "Exceptions_ContinuationMatch",
+        "Ops_Feedback_Review",
+        "Ops_Followup_Queue",
+        "Ops_コーチ_担当負荷",
+        "Ops_ZeroSession_Review",
+        "Ops_Continuation_Targets",
+        "Sync_Log",
+        "Sync_Control",
+        "Publish_Manifest"
+      ]
+    },
+    "cs": {
+      "name": "Potex CS",
+      "tabs": {
+        "CS_要フォロー一覧": [
+          "priority",
+          "feedback_id",
+          "feedback_date",
+          "customer_id",
+          "customer_name",
+          "coach_name",
+          "followup_reason",
+          "low_satisfaction_flag",
+          "comment",
+          "gap_comment"
+        ],
+        "CS_継続対象一覧": [
+          "customer_id",
+          "customer_name",
+          "current_status",
+          "assigned_coach_name",
+          "course_name",
+          "continuation_tag",
+          "after_follow_offer_date",
+          "after_follow_event_date",
+          "after_follow_progress",
+          "note"
+        ],
+        "CS_例外確認": [
+          "staging_feedback_id",
+          "submitted_at",
+          "respondent_name",
+          "respondent_email",
+          "raw_coach_name",
+          "canonical_coach_name",
+          "source_sheet",
+          "source_row",
+          "issue",
+          "note"
+        ],
+        "CS_別名解決入力": [
+          "alias_name",
+          "respondent_email",
+          "related_coach_name",
+          "source_sheet",
+          "source_row",
+          "current_status",
+          "current_canonical_customer_id",
+          "current_canonical_customer_name",
+          "operator_decision_status",
+          "operator_selected_customer_id",
+          "operator_selected_customer_name",
+          "operator_note",
+          "sync_status",
+          "last_collected_at"
+        ],
+        "CS_承認進捗": [
+          "scope",
+          "metric",
+          "value",
+          "note"
+        ],
+        "CS_入金名寄せ確認": [
+          "priority",
+          "payment_id",
+          "payment_customer_name",
+          "payment_line_name",
+          "writeback_alias_name",
+          "contract_date",
+          "paid_date",
+          "plan_name",
+          "amount",
+          "payment_segment",
+          "payment_source_sheet",
+          "payment_source_row",
+          "candidate_source_segment",
+          "candidate_source_sheet",
+          "candidate_source_row",
+          "candidate_display_name",
+          "candidate_line_registration_name",
+          "candidate_real_name",
+          "current_status",
+          "current_canonical_customer_id",
+          "current_canonical_customer_name",
+          "suggestion_basis",
+          "suggested_action",
+          "operator_decision_status",
+          "operator_selected_customer_id",
+          "operator_selected_customer_name",
+          "operator_note",
+          "sync_status",
+          "last_collected_at"
+        ],
+        "CS_継続名寄せ確認": [
+          "priority",
+          "exception_source_sheet",
+          "exception_source_row",
+          "raw_name",
+          "cleaned_name",
+          "raw_plan",
+          "raw_contract_date",
+          "raw_amount",
+          "writeback_alias_name",
+          "candidate_source_segment",
+          "candidate_source_sheet",
+          "candidate_source_row",
+          "candidate_display_name",
+          "candidate_line_registration_name",
+          "candidate_real_name",
+          "current_status",
+          "current_canonical_customer_id",
+          "current_canonical_customer_name",
+          "suggestion_basis",
+          "suggested_action",
+          "operator_decision_status",
+          "operator_selected_customer_id",
+          "operator_selected_customer_name",
+          "operator_note",
+          "sync_status",
+          "last_collected_at"
+        ],
+        "CS_更新アクション": [
+          "writeback_id",
+          "customer_id",
+          "action_type",
+          "action_note",
+          "action_status",
+          "action_due_date",
+          "updated_by",
+          "updated_at",
+          "sync_status"
+        ],
+        "CS_担当割当入力": [
+          "priority",
+          "lead_display_name",
+          "respondent_email",
+          "phone",
+          "age",
+          "suggested_assignee_name",
+          "current_assignee_name",
+          "assignee_type",
+          "operator_decision_status",
+          "operator_selected_assignee_name",
+          "assignment_note",
+          "lead_id",
+          "customer_id",
+          "customer_name",
+          "suggested_assignee_id",
+          "current_assignee_id",
+          "suggested_assignee_scope",
+          "form_response_sheet",
+          "form_response_row",
+          "sync_status",
+          "last_collected_at"
+        ]
+      }
+    },
+    "concierge": {
+      "name": "Potex Concierge",
+      "tabs": {
+        "コンシェルジュ_使い方": [
+          "section",
+          "content"
+        ],
+        "コンシェルジュ_フォロー一覧": [
+          "priority",
+          "feedback_id",
+          "feedback_date",
+          "customer_id",
+          "customer_name",
+          "current_status",
+          "assigned_coach_name",
+          "feedback_coach_name",
+          "followup_reason",
+          "comment",
+          "gap_comment",
+          "owner",
+          "queue_status",
+          "source_ref"
+        ],
+        "コンシェルジュ_データ状況": [
+          "metric",
+          "value",
+          "note"
+        ]
+      }
+    },
+    "executive": {
+      "name": "Potex Executive",
+      "tabs": {
+        "経営_コーチ負荷": [
+          "coach_id",
+          "coach_name",
+          "active_customer_count",
+          "session_count",
+          "followup_customer_count",
+          "low_satisfaction_feedback_count",
+          "remaining_capacity"
+        ],
+        "経営_顧客リスク": [
+          "metric",
+          "value"
+        ],
+        "経営_データ状況": [
+          "metric",
+          "value",
+          "note"
+        ],
+        "経営_例外推移": [
+          "date_jst",
+          "latest_run_at_jst",
+          "source_job",
+          "feedback_match_exception_count",
+          "feedback_match_exception_delta",
+          "payment_unmatched_count",
+          "payment_unmatched_delta",
+          "continuation_unmatched_count",
+          "continuation_unmatched_delta",
+          "line_registration_unmatched_count",
+          "line_registration_unmatched_delta",
+          "feedback_response_id_collision_count",
+          "feedback_response_id_collision_delta"
+        ]
+      }
+    },
+    "sales": {
+      "name": "Potex Sales",
+      "tabs": {
+        "営業_使い方": [
+          "section",
+          "content"
+        ],
+        "営業_契約一覧": [
+          "priority",
+          "contract_date",
+          "paid_date",
+          "payment_status",
+          "customer_id",
+          "canonical_customer_name",
+          "payment_customer_name",
+          "payment_line_name",
+          "sales_owner_name",
+          "plan_name",
+          "amount",
+          "segment",
+          "current_status",
+          "assigned_coach_name",
+          "customer_match_method",
+          "source_sheet",
+          "source_row",
+          "note"
+        ],
+        "営業_未入金一覧": [
+          "priority",
+          "contract_date",
+          "customer_id",
+          "canonical_customer_name",
+          "payment_customer_name",
+          "sales_owner_name",
+          "plan_name",
+          "amount",
+          "segment",
+          "current_status",
+          "assigned_coach_name",
+          "customer_match_method",
+          "source_sheet",
+          "source_row"
+        ],
+        "営業_ファネル推移": [
+          "event_date",
+          "event_type",
+          "customer_id",
+          "customer_name",
+          "current_status",
+          "assigned_coach_name",
+          "changed_by",
+          "note"
+        ],
+        "営業_データ状況": [
+          "metric",
+          "value",
+          "note"
+        ]
+      }
+    },
+    "coaches": {
+      "name": "Potex Coaches",
+      "tabs": {
+        "コーチ_使い方": [
+          "section",
+          "content"
+        ],
+        "コーチ_担当負荷": [
+          "coach_id",
+          "coach_name",
+          "active_customer_count",
+          "session_count",
+          "followup_customer_count",
+          "low_satisfaction_feedback_count",
+          "remaining_capacity"
+        ],
+        "コーチ_要フォロー一覧": [
+          "priority",
+          "feedback_id",
+          "feedback_date",
+          "customer_id",
+          "customer_name",
+          "coach_name",
+          "followup_reason",
+          "low_satisfaction_flag",
+          "comment",
+          "gap_comment"
+        ],
+        "コーチ_データ状況": [
+          "metric",
+          "value",
+          "note"
+        ]
+      }
+    }
+  }
+}

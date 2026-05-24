@@ -1,0 +1,9 @@
+potex-gas/node_modules/
+potex-gas/.clasprc.json
+potex-gas/creds.reconstructed.json
+potex-gas/dist/
+**/__pycache__/
+*.pyc
+pycache/
+generated/*script_properties*.json
+.obsidian/workspace.json

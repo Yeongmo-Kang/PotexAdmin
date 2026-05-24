@@ -1,0 +1,20 @@
+{
+  "name": "potex-gas",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run typecheck && node ./scripts/build-gas.mjs",
+    "push": "clasp push -f",
+    "pull": "clasp pull",
+    "deploy": "npm run build && clasp push -f",
+    "open": "clasp open",
+    "logs": "clasp logs --watch"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.6.3"
+  }
+}
