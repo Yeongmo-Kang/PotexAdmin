@@ -7,7 +7,7 @@ import {
   buildPartnerDataHealth,
   buildPartnerReadme,
   buildPartnerStatusInput,
-} from './views';
+} from './views/partner';
 
 function safeReadSheetAsObjects(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string): Array<Record<string, string>> {
   try {

@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { readSheetAsObjects, readSheetAsObjectsOrEmpty, clearAndRewrite, normalizeDateColumns, openSpreadsheetById } from '../sheets';
-import { buildConciergeDataHealth, buildConciergeFollowupView, buildConciergeReadme } from './views';
+import { buildConciergeDataHealth, buildConciergeFollowupView, buildConciergeReadme } from './views/concierge';
 
 function inferCustomerIngestMode(cfg: ReturnType<typeof getRuntimeConfig>): string {
   if (!cfg.sourceCustomersWorkbookId) return 'canonical_fallback_active';

@@ -2,7 +2,9 @@ import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { FEEDBACK_HEADER } from '../canonical/ingest';
 import { clearAndRewrite, openSpreadsheetById, readSheetAsObjects } from '../sheets';
-import { CS_CONTINUATION_ALIAS_REVIEW_HEADER, CS_ASSIGNMENT_INPUT_HEADER, resolveContinuationCeId } from '../publish/views';
+import { resolveContinuationCeId } from '../publish/views/cs';
+import { CS_ALIAS_RESOLUTION_INPUT_HEADER, CS_ALIAS_RESOLUTION_INPUT_REQUIRED_COLUMNS, CS_PAYMENT_ALIAS_REVIEW_HEADER, CS_PAYMENT_ALIAS_REVIEW_REQUIRED_COLUMNS, CS_CONTINUATION_ALIAS_REVIEW_HEADER, CS_CONTINUATION_ALIAS_REVIEW_REQUIRED_COLUMNS, CS_ASSIGNMENT_INPUT_HEADER, CS_ASSIGNMENT_INPUT_REQUIRED_COLUMNS } from '../contracts/cs';
+import { assertRequiredColumns, projectRowToHeader, rowsToContractValues } from '../contracts/shared';
 
 type Stats = {
   pendingAliasRows: number;
@@ -63,55 +65,6 @@ const OPS_FEEDBACK_REVIEW_HEADER = [
 function currentIsoTimestamp(): string {
   return new Date().toISOString();
 }
-
-const CS_ALIAS_INPUT_HEADER = [
-  'alias_name',
-  'respondent_email',
-  'related_coach_name',
-  'response_id',
-  'current_status',
-  'current_canonical_customer_id',
-  'current_canonical_customer_name',
-  'operator_decision_status',
-  'operator_selected_customer_id',
-  'operator_selected_customer_name',
-  'operator_note',
-  'sync_status',
-  'last_collected_at',
-];
-
-const CS_ASSIGNMENT_HEADER = CS_ASSIGNMENT_INPUT_HEADER as unknown as string[];
-
-const CS_PAYMENT_ALIAS_REVIEW_HEADER = [
-  'priority',
-  'payment_id',
-  'payment_customer_name',
-  'payment_line_name',
-  'writeback_alias_name',
-  'contract_date',
-  'paid_date',
-  'plan_name',
-  'amount',
-  'payment_segment',
-  'payment_source_sheet',
-  'payment_source_row',
-  'candidate_segment',
-  'candidate_line_registration_id',
-  'candidate_display_name',
-  'candidate_line_registration_name',
-  'candidate_real_name',
-  'current_status',
-  'current_canonical_customer_id',
-  'current_canonical_customer_name',
-  'suggestion_basis',
-  'suggested_action',
-  'operator_decision_status',
-  'operator_selected_customer_id',
-  'operator_selected_customer_name',
-  'operator_note',
-  'sync_status',
-  'last_collected_at',
-];
 
 function normalizeName(value: string): string {
   return (value || '').replace(/\s|　/g, '').trim().toLowerCase();
@@ -275,12 +228,21 @@ function emptyStats(): Stats {
   };
 }
 
-function safeReadSheetAsObjects(
+function safeReadContractRows(
   spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
   sheetName: string,
+  header: readonly string[],
+  requiredColumns: readonly string[],
 ): Array<Record<string, string>> {
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) return [];
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn > 0) {
+    const actualHeader = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map((cell) => String(cell || ''));
+    assertRequiredColumns(actualHeader, requiredColumns, sheetName);
+  }
   try {
-    return readSheetAsObjects(spreadsheet, sheetName);
+    return readSheetAsObjects(spreadsheet, sheetName).map((row) => projectRowToHeader(header, row));
   } catch (error) {
     return [];
   }
@@ -292,10 +254,10 @@ export function collectCsWritebackRows(): Stats {
   const cs = openSpreadsheetById(cfg.csSpreadsheetId);
   const syncedAt = currentIsoTimestamp();
 
-  const inputRows = safeReadSheetAsObjects(cs, VIEWS.CS_ALIAS_RESOLUTION_INPUT);
-  const paymentInputRows = safeReadSheetAsObjects(cs, VIEWS.CS_PAYMENT_ALIAS_REVIEW);
-  const continuationInputRows = safeReadSheetAsObjects(cs, VIEWS.CS_CONTINUATION_ALIAS_REVIEW);
-  const assignmentInputRows = safeReadSheetAsObjects(cs, VIEWS.CS_ASSIGNMENT_INPUT);
+  const inputRows = safeReadContractRows(cs, VIEWS.CS_ALIAS_RESOLUTION_INPUT, CS_ALIAS_RESOLUTION_INPUT_HEADER, CS_ALIAS_RESOLUTION_INPUT_REQUIRED_COLUMNS);
+  const paymentInputRows = safeReadContractRows(cs, VIEWS.CS_PAYMENT_ALIAS_REVIEW, CS_PAYMENT_ALIAS_REVIEW_HEADER, CS_PAYMENT_ALIAS_REVIEW_REQUIRED_COLUMNS);
+  const continuationInputRows = safeReadContractRows(cs, VIEWS.CS_CONTINUATION_ALIAS_REVIEW, CS_CONTINUATION_ALIAS_REVIEW_HEADER, CS_CONTINUATION_ALIAS_REVIEW_REQUIRED_COLUMNS);
+  const assignmentInputRows = safeReadContractRows(cs, VIEWS.CS_ASSIGNMENT_INPUT, CS_ASSIGNMENT_INPUT_HEADER, CS_ASSIGNMENT_INPUT_REQUIRED_COLUMNS);
 
   const actionableRows = inputRows
     .map((row, index) => ({ row, index }))
@@ -339,7 +301,7 @@ export function collectCsWritebackRows(): Stats {
   const excRows = readSheetAsObjects(db, SHEETS.EXCEPTIONS_FEEDBACK_MATCH);
   const customerRows = readSheetAsObjects(db, SHEETS.CUSTOMERS);
   const coachRows = readSheetAsObjects(db, SHEETS.COACHES);
-  const customerCoachAssignmentRows = safeReadSheetAsObjects(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS);
+  const customerCoachAssignmentRows = readSheetAsObjects(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS).map((row) => ({ ...row }));
 
   const aliasByName = new Map<string, Record<string, string>>();
   aliasRows.forEach((row) => {
@@ -645,7 +607,7 @@ export function collectCsWritebackRows(): Stats {
   });
 
   if (processedPartnerInputIndexes.size > 0) {
-    clearAndRewrite(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS, rowsToValues([
+    clearAndRewrite(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS, rowsToContractValues([
       'assignment_id', 'lead_id', 'customer_id', 'lead_display_name', 'respondent_email', 'phone', 'age', 'source_sheet', 'source_row',
       'coach_id', 'role', 'assignee_kind', 'assignee_scope', 'assignment_status', 'assigned_at', 'assignment_source',
       'meeting_status', 'meeting_done_at', 'potex_sale_status', 'recruitment_status', 'partner_status_note', 'last_partner_update_at', 'last_partner_updated_by',
@@ -654,7 +616,7 @@ export function collectCsWritebackRows(): Stats {
   }
 
   const mergedAliasRows = Array.from(aliasByName.values()).sort((a, b) => normalizeName(a['alias_name'] || '').localeCompare(normalizeName(b['alias_name'] || '')));
-  clearAndRewrite(db, SHEETS.CUSTOMER_ALIAS_MAP, rowsToValues(DEFAULT_ALIAS_HEADER, mergedAliasRows));
+  clearAndRewrite(db, SHEETS.CUSTOMER_ALIAS_MAP, rowsToContractValues(DEFAULT_ALIAS_HEADER, mergedAliasRows));
 
   const aliasLookup = buildAliasLookup(mergedAliasRows);
   const coachById = new Map<string, Record<string, string>>();
@@ -736,16 +698,16 @@ export function collectCsWritebackRows(): Stats {
   });
 
   if (additionsFeedback.length || feedbackRowsMutated) {
-    clearAndRewrite(db, SHEETS.FEEDBACK, rowsToValues(FEEDBACK_HEADER, [...feedbackRows, ...additionsFeedback]));
+    clearAndRewrite(db, SHEETS.FEEDBACK, rowsToContractValues(FEEDBACK_HEADER, [...feedbackRows, ...additionsFeedback]));
   }
 
   if (additionsOps.length || opsRowsMutated) {
-    clearAndRewrite(db, 'Ops_Feedback_Review', rowsToValues(OPS_FEEDBACK_REVIEW_HEADER, [...opsRows, ...additionsOps]));
+    clearAndRewrite(db, 'Ops_Feedback_Review', rowsToContractValues(OPS_FEEDBACK_REVIEW_HEADER, [...opsRows, ...additionsOps]));
   }
 
   if (exceptionRowsRemoved > 0) {
     const excHeader = Object.keys(excRows[0] || keptExceptions[0] || { issue: '', respondent_name: '', respondent_email: '' });
-    clearAndRewrite(db, SHEETS.EXCEPTIONS_FEEDBACK_MATCH, rowsToValues(excHeader, keptExceptions));
+    clearAndRewrite(db, SHEETS.EXCEPTIONS_FEEDBACK_MATCH, rowsToContractValues(excHeader, keptExceptions));
   }
 
   const collectedAt = Utilities.formatDate(new Date(), 'Asia/Tokyo', "yyyy-MM-dd'T'HH:mm:ssXXX");
@@ -768,7 +730,7 @@ export function collectCsWritebackRows(): Stats {
       last_collected_at: collectedAt,
     };
   });
-  clearAndRewrite(cs, VIEWS.CS_ALIAS_RESOLUTION_INPUT, rowsToValues(CS_ALIAS_INPUT_HEADER, updatedInputRows));
+  clearAndRewrite(cs, VIEWS.CS_ALIAS_RESOLUTION_INPUT, rowsToContractValues(CS_ALIAS_RESOLUTION_INPUT_HEADER, updatedInputRows.map((row) => projectRowToHeader(CS_ALIAS_RESOLUTION_INPUT_HEADER, row))));
 
   const updatedPartnerInputRows = assignmentInputRows.map((row, index) => {
     const decision = (row['operator_decision_status'] || '').trim();
@@ -789,7 +751,7 @@ export function collectCsWritebackRows(): Stats {
       last_collected_at: collectedAt,
     };
   });
-  clearAndRewrite(cs, VIEWS.CS_ASSIGNMENT_INPUT, rowsToValues(CS_ASSIGNMENT_HEADER, updatedPartnerInputRows));
+  clearAndRewrite(cs, VIEWS.CS_ASSIGNMENT_INPUT, rowsToContractValues(CS_ASSIGNMENT_INPUT_HEADER, updatedPartnerInputRows.map((row) => projectRowToHeader(CS_ASSIGNMENT_INPUT_HEADER, row))));
 
   const updatedPaymentInputRows = paymentInputRows.map((row, index) => {
     const decision = (row['operator_decision_status'] || '').trim();
@@ -810,7 +772,7 @@ export function collectCsWritebackRows(): Stats {
       last_collected_at: collectedAt,
     };
   });
-  clearAndRewrite(cs, VIEWS.CS_PAYMENT_ALIAS_REVIEW, rowsToValues(CS_PAYMENT_ALIAS_REVIEW_HEADER, updatedPaymentInputRows));
+  clearAndRewrite(cs, VIEWS.CS_PAYMENT_ALIAS_REVIEW, rowsToContractValues(CS_PAYMENT_ALIAS_REVIEW_HEADER, updatedPaymentInputRows.map((row) => projectRowToHeader(CS_PAYMENT_ALIAS_REVIEW_HEADER, row))));
 
   const updatedContinuationInputRows = continuationInputRows.map((row, index) => {
     const decision = (row['operator_decision_status'] || '').trim();
@@ -831,7 +793,7 @@ export function collectCsWritebackRows(): Stats {
       last_collected_at: collectedAt,
     };
   });
-  clearAndRewrite(cs, VIEWS.CS_CONTINUATION_ALIAS_REVIEW, rowsToValues(CS_CONTINUATION_ALIAS_REVIEW_HEADER as unknown as string[], updatedContinuationInputRows));
+  clearAndRewrite(cs, VIEWS.CS_CONTINUATION_ALIAS_REVIEW, rowsToContractValues(CS_CONTINUATION_ALIAS_REVIEW_HEADER, updatedContinuationInputRows.map((row) => projectRowToHeader(CS_CONTINUATION_ALIAS_REVIEW_HEADER, row))));
 
   return {
     pendingAliasRows: actionableRows.length,

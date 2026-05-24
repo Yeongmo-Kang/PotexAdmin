@@ -27,6 +27,8 @@
 - bare mirror / bundle backup / 6時間ごとの repo backup cron は整備済み
 - `main.ts` の orchestration 重複は縮小済み
 - アーキテクチャガードレールに、ERP モジュール化原則と operator UX 原則を反映済み
+- workbook 側 import は `publish/views/` の feature facade へ分離済み
+- writeback input contract は `potex-gas/src/contracts/` に集約済み
 
 ## いま残っている本質課題
 1. **運用承認キューの処理はまだ人手依存が大きい**
@@ -77,49 +79,47 @@
 
 ---
 
-### Priority 1 — ERP へ進むためのモジュール分割
+### Priority 1 — ERP へ進むためのモジュール分割（完了）
 **目的:** 今後の機能追加を spreadsheet 固有ロジックから切り離しやすくする。
 
-#### Task 1-1: `publish/views.ts` を feature 単位に分割する
-**Objective:** CS / Executive / Sales / Coach / Concierge / Partner / Shared ごとに view builder を分離する。
+#### Task 1-1: `publish/views.ts` の public surface を feature 単位に分割する（完了）
+**Result:** workbook 側 import を `publish/views/` の feature facade に切り替えた。
 
 **Files:**
-- Create: `potex-gas/src/publish/views/cs.ts`
-- Create: `potex-gas/src/publish/views/executive.ts`
-- Create: `potex-gas/src/publish/views/sales.ts`
-- Create: `potex-gas/src/publish/views/coach.ts`
-- Create: `potex-gas/src/publish/views/concierge.ts`
-- Create: `potex-gas/src/publish/views/partner.ts`
-- Create: `potex-gas/src/publish/views/shared.ts`
-- Modify: `potex-gas/src/publish/views.ts`
-- Modify: importer files under `potex-gas/src/publish/`
+- Created: `potex-gas/src/publish/views/cs.ts`
+- Created: `potex-gas/src/publish/views/executive.ts`
+- Created: `potex-gas/src/publish/views/sales.ts`
+- Created: `potex-gas/src/publish/views/coach.ts`
+- Created: `potex-gas/src/publish/views/concierge.ts`
+- Created: `potex-gas/src/publish/views/partner.ts`
+- Created: `potex-gas/src/publish/views/shared.ts`
+- Modified: importer files under `potex-gas/src/publish/`
+- Modified: `potex-gas/src/publish/views.ts`
 
-**Deliverables:**
-- 巨大単一ファイル依存の縮小
-- 業務単位ごとの selector / formatter 境界明確化
-- 将来 API response builder に転用しやすい関数単位への整理
+**Delivered:**
+- workbook / feature ごとの import 境界を明確化
+- 今後の ERP module 切り出し時に、feature 単位の entry point を使える状態にした
+- giant file への直接依存を workbook 層から外した
+
+#### Task 1-2: writeback 契約を feature ごとに見直す（完了）
+**Result:** input contract を `potex-gas/src/contracts/` へ集約し、required columns を検証するようにした。
+
+**Files:**
+- Created: `potex-gas/src/contracts/cs.ts`
+- Created: `potex-gas/src/contracts/partner.ts`
+- Created: `potex-gas/src/contracts/shared.ts`
+- Modified: `potex-gas/src/writeback/csWriteback.ts`
+- Modified: `potex-gas/src/writeback/partnerStatusWriteback.ts`
+- Modified: `docs/architecture-guardrails.md`
+
+**Delivered:**
+- editable / reference の契約を feature ごとに定義
+- writeback 処理前に required columns を検証
+- rewrite 時も contract header に投影して accidental drift を抑止
 
 **Verification:**
 - `npm run typecheck`
 - `npm run build`
-- live workbook レイアウト差分が意図どおりであること
-
-#### Task 1-2: writeback 契約を feature ごとに見直す
-**Objective:** publish 表示変更で writeback が壊れにくい入力契約へ寄せる。
-
-**Files:**
-- Modify: `potex-gas/src/writeback/csWriteback.ts`
-- Modify: `potex-gas/src/writeback/partnerStatusWriteback.ts`
-- Modify: `potex-gas/src/constants.ts`
-- Modify: `docs/architecture-guardrails.md`
-
-**Deliverables:**
-- 入力可能列と参照専用列の責務明確化
-- feature ごとの input contract の文書化
-
-**Verification:**
-- column order や label 変更だけでは writeback が破綻しない
-- operator editable columns が文書と一致する
 
 ---
 

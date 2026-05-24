@@ -6,7 +6,7 @@ import {
   buildCoachLoadView,
   buildCoachFollowupAlertsView,
   buildCoachDataHealth,
-} from './views';
+} from './views/coach';
 
 export function publishCoachesWorkbook(): void {
   const cfg = getRuntimeConfig();

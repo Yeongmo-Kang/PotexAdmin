@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { readSheetAsObjects, readSheetAsObjectsOrEmpty, clearAndRewrite, openSpreadsheetById } from '../sheets';
-import { buildExecReadme, buildExecMeetingCheck, buildExecUpdateStatus, buildExecCoachLoad, buildExecCustomerRiskSummary, buildExecDataHealth, buildExecExceptionTrend } from './views';
+import { buildExecReadme, buildExecMeetingCheck, buildExecUpdateStatus, buildExecCoachLoad, buildExecCustomerRiskSummary, buildExecDataHealth, buildExecExceptionTrend } from './views/executive';
 
 export function publishExecutiveWorkbook(): void {
   const cfg = getRuntimeConfig();

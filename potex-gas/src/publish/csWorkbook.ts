@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { readSheetAsObjects, readSheetAsObjectsOrEmpty, clearAndRewrite, normalizeDateColumns, openSpreadsheetById } from '../sheets';
-import { buildCsReadme, buildCsFollowupQueue, buildCsContinuationTargets, buildCsAliasResolutionInput, buildCsPaymentAliasReview, buildCsContinuationAliasReview, buildCsApprovalProgress, buildCsAssignmentInput } from './views';
+import { buildCsReadme, buildCsFollowupQueue, buildCsContinuationTargets, buildCsAliasResolutionInput, buildCsPaymentAliasReview, buildCsContinuationAliasReview, buildCsApprovalProgress, buildCsAssignmentInput } from './views/cs';
 
 function safeReadSheetAsObjects(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string): Array<Record<string, string>> {
   try {

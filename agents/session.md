@@ -23,6 +23,8 @@
   - Windows auto-update scripts 追加
   - `main.ts` orchestration 重複縮小
   - architecture / ERP modularization / operator UX guardrails 追加
+  - `publish/views/` feature facade 分離
+  - `contracts/` ベースの writeback input contract 集約
 
 ## 2026-05-25 時点の実態整理
 ### 稼働中のもの
@@ -34,11 +36,11 @@
 - GitHub main / bare mirror / bundle backup / repo backup cron は有効
 
 ### いま本当に残っている作業
-1. `publish/views.ts` の feature 分割
-2. writeback input contract の整理
-3. approval queue の運用自動化・可観測性改善
-4. ERP module map / customer ownership / `Customer_Edit_History` 設計
-5. その後に営業自動化 (`P-013`) の前提整理
+1. approval queue の運用自動化・可観測性改善
+2. ERP module map / customer ownership / `Customer_Edit_History` 設計
+3. facade の内側に残る `publish/views.ts` helper の段階移管
+4. その後に営業自動化 (`P-013`) の前提整理
+5. operator 実処理が必要な approval queue の前進
 
 ### 人入力が必要なもの
 - `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の承認処理

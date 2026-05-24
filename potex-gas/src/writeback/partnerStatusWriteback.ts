@@ -2,6 +2,8 @@ import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { PARTNER_ASSIGNEES } from '../partners';
 import { clearAndRewrite, openSpreadsheetById, readSheetAsObjects, readSheetAsObjectsOrEmpty } from '../sheets';
+import { CUSTOMER_COACH_ASSIGNMENTS_HEADER, PARTNER_STATUS_INPUT_HEADER, PARTNER_STATUS_INPUT_REQUIRED_COLUMNS } from '../contracts/partner';
+import { assertRequiredColumns, projectRowToHeader, rowsToContractValues } from '../contracts/shared';
 
 export type PartnerStatusWritebackStats = {
   pendingPartnerStatusRows: number;
@@ -9,38 +11,35 @@ export type PartnerStatusWritebackStats = {
   invalidPartnerStatusRows: number;
 };
 
-function safeReadSheetAsObjects(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string): Array<Record<string, string>> {
+function safeReadContractRows(
+  spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  sheetName: string,
+  header: readonly string[],
+  requiredColumns: readonly string[],
+): Array<Record<string, string>> {
+  const sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) return [];
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn > 0) {
+    const actualHeader = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map((cell) => String(cell || ''));
+    assertRequiredColumns(actualHeader, requiredColumns, sheetName);
+  }
   try {
-    return readSheetAsObjects(spreadsheet, sheetName);
+    return readSheetAsObjects(spreadsheet, sheetName).map((row) => projectRowToHeader(header, row));
   } catch (error) {
     return [];
   }
-}
-
-function rowsToValues(header: string[], rows: Array<Record<string, string>>): Array<Array<string>> {
-  return [header, ...rows.map((row) => header.map((key) => row[key] || ''))];
 }
 
 function isTruthy(value: string): boolean {
   return ['true', '1', 'yes', 'y', 'submit'].includes(String(value || '').trim().toLowerCase());
 }
 
-const CUSTOMER_COACH_ASSIGNMENTS_HEADER = [
-  'assignment_id', 'lead_id', 'customer_id', 'lead_display_name', 'respondent_email', 'phone', 'age', 'source_sheet', 'source_row',
-  'coach_id', 'role', 'assignee_kind', 'assignee_scope', 'assignment_status', 'assigned_at', 'assignment_source',
-  'meeting_status', 'meeting_done_at', 'potex_sale_status', 'recruitment_status', 'partner_status_note', 'last_partner_update_at', 'last_partner_updated_by',
-  'ended_at', 'note', 'created_at', 'updated_at',
-] as const;
-
 export function collectPartnerStatusWritebackRows(): PartnerStatusWritebackStats {
   const cfg = getRuntimeConfig();
   const db = openSpreadsheetById(cfg.dbSpreadsheetId);
   const assignmentRows = readSheetAsObjectsOrEmpty(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS).map((row) => {
-    const normalized: Record<string, string> = {};
-    CUSTOMER_COACH_ASSIGNMENTS_HEADER.forEach((key) => {
-      normalized[key] = row[key] || '';
-    });
-    return normalized;
+    return projectRowToHeader(CUSTOMER_COACH_ASSIGNMENTS_HEADER, row);
   });
   const assignmentIndexByKey = new Map<string, number>();
   assignmentRows.forEach((row, idx) => {
@@ -63,7 +62,7 @@ export function collectPartnerStatusWritebackRows(): PartnerStatusWritebackStats
     const workbook = openSpreadsheetById(target.spreadsheetId || '');
     const sheet = workbook.getSheetByName(VIEWS.PARTNER_STATUS_INPUT);
     if (!sheet) return;
-    const inputRows = safeReadSheetAsObjects(workbook, VIEWS.PARTNER_STATUS_INPUT);
+    const inputRows = safeReadContractRows(workbook, VIEWS.PARTNER_STATUS_INPUT, PARTNER_STATUS_INPUT_HEADER, PARTNER_STATUS_INPUT_REQUIRED_COLUMNS);
     const lastColumn = sheet.getLastColumn();
     if (lastColumn <= 0) return;
     const header = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].map((cell) => String(cell || ''));
@@ -104,7 +103,7 @@ export function collectPartnerStatusWritebackRows(): PartnerStatusWritebackStats
   });
 
   if (canonicalChanged) {
-    clearAndRewrite(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS, rowsToValues(CUSTOMER_COACH_ASSIGNMENTS_HEADER as unknown as string[], assignmentRows));
+    clearAndRewrite(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS, rowsToContractValues(CUSTOMER_COACH_ASSIGNMENTS_HEADER, assignmentRows));
   }
 
   return {

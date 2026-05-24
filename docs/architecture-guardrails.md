@@ -19,6 +19,8 @@
   - 時間主導の orchestration のみ
 - `config.ts`, `constants.ts`, `sheets.ts`, `logging.ts`, `locks.ts`
   - 横断的ユーティリティ
+- `contracts/`
+  - publish / writeback の入力契約、header、required columns、projection helper を置く
 
 ## 依存方向ルール
 

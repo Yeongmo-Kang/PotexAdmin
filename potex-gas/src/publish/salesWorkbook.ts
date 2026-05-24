@@ -7,7 +7,7 @@ import {
   buildSalesPendingPaymentsView,
   buildSalesFunnelEventsView,
   buildSalesDataHealth,
-} from './views';
+} from './views/sales';
 
 export function publishSalesWorkbook(): void {
   const cfg = getRuntimeConfig();

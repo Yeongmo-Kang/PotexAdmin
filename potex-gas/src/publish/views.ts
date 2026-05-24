@@ -1,57 +1,8 @@
 import { SHEETS, VIEWS } from '../constants';
 import { tokenizeAttributionTags } from '../canonical/line';
 import { buildContinuationExceptionId } from '../canonical/commercial';
-
-export const CS_CONTINUATION_ALIAS_REVIEW_HEADER = [
-  'priority',
-  'suggested_action',
-  'raw_name',
-  'cleaned_name',
-  'raw_plan',
-  'raw_contract_date',
-  'raw_amount',
-  'candidate_real_name',
-  'candidate_line_registration_name',
-  'candidate_display_name',
-  'candidate_segment',
-  'current_status',
-  'current_canonical_customer_name',
-  'current_canonical_customer_id',
-  'suggestion_basis',
-  'writeback_alias_name',
-  'operator_decision_status',
-  'operator_selected_customer_name',
-  'operator_selected_customer_id',
-  'operator_note',
-  'continuation_exception_id',
-  'candidate_line_registration_id',
-  'sync_status',
-  'last_collected_at',
-] as const;
-
-export const CS_ASSIGNMENT_INPUT_HEADER = [
-  'priority',
-  'lead_display_name',
-  'respondent_email',
-  'phone',
-  'age',
-  'suggested_assignee_name',
-  'current_assignee_name',
-  'assignee_type',
-  'operator_decision_status',
-  'operator_selected_assignee_name',
-  'assignment_note',
-  'lead_id',
-  'customer_id',
-  'customer_name',
-  'suggested_assignee_id',
-  'current_assignee_id',
-  'suggested_assignee_scope',
-  'form_response_sheet',
-  'form_response_row',
-  'sync_status',
-  'last_collected_at',
-] as const;
+import { CS_ASSIGNMENT_INPUT_HEADER, CS_CONTINUATION_ALIAS_REVIEW_HEADER } from '../contracts/cs';
+import { PARTNER_STATUS_INPUT_HEADER } from '../contracts/partner';
 
 export function resolveContinuationCeId(row: Record<string, string>): string {
   const explicit = row['continuation_exception_id'];
@@ -2081,33 +2032,6 @@ export function buildCoachDataHealth(
     ['remaining_capacity_total', String(totalRemainingCapacity), '全コーチの remaining_capacity 合計です。'],
   ];
 }
-
-export const PARTNER_STATUS_INPUT_HEADER = [
-  'priority',
-  'lead_display_name',
-  'respondent_email',
-  'phone',
-  'age',
-  'assigned_at',
-  'current_meeting_status',
-  'current_meeting_done_at',
-  'current_potex_sale_status',
-  'current_recruitment_status',
-  'current_partner_status_note',
-  'current_plan_name',
-  'current_plan_status',
-  'operator_meeting_status',
-  'operator_meeting_done_at',
-  'operator_potex_sale_status',
-  'operator_recruitment_status',
-  'operator_partner_status_note',
-  'submit_update',
-  'lead_id',
-  'customer_id',
-  'coach_id',
-  'sync_status',
-  'last_collected_at',
-] as const;
 
 function resolvePartnerPriority(row: Record<string, string>, staleDays: number): string {
   if ((row['assignment_status'] || '').toLowerCase() !== 'active') return 'P3';
