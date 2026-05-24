@@ -52,6 +52,8 @@ CS 담당자가 주로 보는 곳
 
 #### `Potex Executive`
 운영 리더/매니저가 보는 곳
+- `経営_会議前チェック`
+- `経営_更新状況`
 - `経営_コーチ負荷`
 - `経営_顧客リスク`
 - `経営_データ状況`
@@ -211,6 +213,37 @@ concierge가 follow-up 맥락을 읽기 전용으로 보는 곳
 - 승인 후 다음 refresh + republish에서 row가 queue에서 사라지면 정상.
 - 탭 자체가 없으면 publish/runtime path 점검이 먼저 (`inspect_post_refresh_state.py` verdict의 `cs_continuation_alias_review_present`가 `true`여야 한다).
 
+### `経営_会議前チェック`
+무엇을 보는가:
+- 오늘 경영회의를 **그대로 진행해도 되는지** 빠르게 판단하는 탭
+- `publish freshness`, `full refresh freshness`, `writeback freshness`, stale domain 수, human update omission 가능성, 중요안건 수를 한 줄씩 본다
+- 마지막 줄 `overall meeting risk`는 `GO` / `GO_WITH_CAUTION` / `CHECK_BEFORE_MEETING` 중 하나를 준다
+
+운영자가 하는 일:
+- 회의 시작 전에 이 탭을 먼저 연다
+- `CHECK_BEFORE_MEETING`이면 바로 다음 탭인 `経営_更新状況`로 이동해 어느 도메인이 stale인지 확인한다
+- `critical team issues in meeting scope`가 크면 클레임/요포로우/미매칭이 회의 논점에서 누락되지 않았는지 확인한다
+
+### `経営_更新状況`
+무엇을 보는가:
+- 도메인별 freshness / stale / 업데이트 누락 위험 현황
+- 주요 컬럼:
+  - `domain`
+  - `status`
+  - `last_effective_update_at_jst`
+  - `expected_cadence`
+  - `stale_threshold`
+  - `stale_by`
+  - `likely_issue_type`
+  - `likely_decision_risk`
+  - `recommended_check`
+
+운영자가 하는 일:
+- `status`가 `高リスク（会議前に確認推奨）`인 도메인부터 본다
+- `likely_issue_type`로 이것이 자동화 미실행인지, 원데이터 업데이트 누락인지 구분한다
+- `likely_decision_risk`를 보고 숫자가 어떤 방향으로 왜곡될 가능성이 있는지 회의에서 먼저 공유한다
+- `recommended_check`를 따라 어느 팀/어느 시트를 먼저 확인할지 정한다
+
 ### `経営_コーチ負荷`
 무엇을 보는가:
 - 코치별 고객 수/부하
@@ -228,6 +261,16 @@ concierge가 follow-up 맥락을 읽기 전용으로 보는 곳
 
 ### `経営_データ状況`
 무엇을 보는가 (`metric` / `value` / `note`):
+- **회의 신뢰도 메트릭**:
+  - `last_publish_success_at_jst` — 최신 `runPublishAll` 성공 시각
+  - `last_full_refresh_success_at_jst` — 최신 `runFullRefresh` 성공 시각
+  - `last_writeback_success_at_jst` — 최신 `runWritebackCollection` 성공 시각
+  - `stale_domain_count` — `経営_更新状況`에서 stale 판정된 도메인 수
+  - `stale_high_risk_domain_count` — 회의 전 확인 우선 도메인 수
+  - `likely_human_update_omission_count` — 자동화는 돌았지만 원데이터 업데이트 누락이 의심되는 도메인 수
+  - `domains_with_likely_human_update_omission` — 해당 도메인 목록
+  - `meeting_risk_status` — `経営_会議前チェック`와 같은 최종 회의 상태
+  - `critical_team_issue_count` — 회의 안건이 되기 쉬운 요포로우 / 예외 / 클레임 후보성 이슈 수
 - **카운트 메트릭**: canonical row 수치 (customers / coaches / sessions / feedback / plans / payments / conversion_events / line_registrations / followup_queue / continuation_targets).
 - **예외/미매칭 메트릭** (값이 0에 가까울수록 좋음):
   - `feedback_match_exception_count` — `Exceptions_FeedbackMatch` 행 수. 처리: `CS_別名解決入力`.
@@ -240,6 +283,9 @@ concierge가 follow-up 맥락을 읽기 전용으로 보는 곳
 - `経営_例外推移`는 위 예외/미매칭 메트릭의 **시계열 companion view**다. 현재 기본 튜닝은 **JST 일별 / 최근 30일 / 해당 날짜 마지막 successful Sync_Log snapshot**.
 
 운영자가 하는 일:
+- 우선 `meeting_risk_status`와 최신 publish/refresh/writeback 시각이 말이 되는지 확인한다
+- stale/high-risk count가 0이 아니면 `経営_更新状況`로 이동한다
+- `critical_team_issue_count`가 크면 팀 중요안건(클레임 포함)이 회의 자료에 충분히 반영됐는지 확인한다
 - 데이터가 비정상적으로 줄거나 비어 있지 않은지 확인.
 - refresh 후 숫자가 말이 되는지 sanity check.
 - 예외/미매칭 메트릭이 갑자기 늘면 해당 review 시트(`CS_*_Review` / `CS_別名解決入力`)부터 확인.
@@ -311,8 +357,12 @@ concierge가 follow-up 맥락을 읽기 전용으로 보는 곳
 - 승인 후에는 직접 다음 단계를 호출하지 않고, writeback collection (매 30분) → canonical refresh → republish 자동 흐름을 기다리는가
 - `CS_承認進捗`에서 `decided_waiting_sync` / `invalid_open`이 쌓이지 않는가
 
-### Step 5. `経営_データ状況` 빠르게 확인
+### Step 5. `経営_会議前チェック` → `経営_更新状況` → `経営_データ状況` 순서로 확인
 체크 포인트:
+- `overall meeting risk`가 `GO` / `GO_WITH_CAUTION` / `CHECK_BEFORE_MEETING` 중 무엇인가
+- stale/high-risk domain이 어느 팀 이슈인지 보이는가
+- human update omission 가능성이 있는가
+- `critical team issues in meeting scope`가 커졌다면 클레임/중요안건 누락 가능성이 있는가
 - 값이 갑자기 0이 되었는가
 - exception 수가 갑자기 늘었는가
 - follow-up / continuation 수치가 비정상적으로 바뀌었는가

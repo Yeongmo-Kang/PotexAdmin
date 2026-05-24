@@ -227,6 +227,22 @@
     "executive": {
       "name": "Potex Executive",
       "tabs": {
+        "経営_会議前チェック": [
+          "check_item",
+          "status",
+          "detail"
+        ],
+        "経営_更新状況": [
+          "domain",
+          "status",
+          "last_effective_update_at_jst",
+          "expected_cadence",
+          "stale_threshold",
+          "stale_by",
+          "likely_issue_type",
+          "likely_decision_risk",
+          "recommended_check"
+        ],
         "経営_コーチ負荷": [
           "coach_id",
           "coach_name",

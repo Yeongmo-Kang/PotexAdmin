@@ -1,8 +1,10 @@
-업데이트: 2026-05-24T08:52:06+09:00# Potex Orchestrator Session Checkpoint
-업데이트: 2026-05-23T12:30:00+09:00
+# Potex Orchestrator Session Checkpoint
+
+업데이트: 2026-05-24T20:20:00+09:00
 
 ## 운영 원칙
-- Potex는 `c:\Users\zerom\Desktop\DevZero\projects\potex` (WSL: `/mnt/c/.../potex`)에서만 관리.
+- GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`)를 문서/코드/계획의 1차 기준으로 사용.
+- 로컬 workspace(`/home/ubuntu/.hermes/projects/PotexAdmin`)는 작업 복사본이자 백업이다.
 - 상태 추적의 기준 문서는 `docs/backlog.md` + 이 파일.
 - 원본 4종 (`受講者管理`, `顧客満足度会議`, `月次振り返りアンケート（回答）`, `⭕️使用中｜POTEX数値管理`)은 read-only reference. 직접 수정/구조변경/탭삭제 금지.
 - POTEX DB만 canonical. 다른 워크북은 (a) 통계 표시, (b) 필터 뷰, (c) DB 갱신을 유발하는 트리거 입력만 수행.
@@ -82,6 +84,7 @@
 - `README.md` / `CLAUDE.md`
 - `agents/workflow.md`
 - `docs/backlog.md`
+- `docs/plans/2026-05-24-executive-data-trust-and-freshness-plan.md` (경영 회의용 freshness / stale-domain / human update omission visibility 계획)
 - `OPERATIONS_MANUAL.md`
 - `OPS_WORKBOOK_ARCHITECTURE.md`
 - `PHASE1_CUTOVER_RUNBOOK.md`

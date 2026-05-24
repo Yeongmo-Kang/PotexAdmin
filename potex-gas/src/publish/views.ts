@@ -409,17 +409,398 @@ export function buildCsContinuationTargets(
   return [header, ...rows];
 }
 
+
+type SyncLogJobSummary = {
+  jobName: string;
+  latestSuccessAtMs: number;
+  latestSuccessAtJst: string;
+  latestSuccessStats: Record<string, string>;
+};
+
+type ExecutivePipelineSummary = {
+  publish: SyncLogJobSummary;
+  fullRefresh: SyncLogJobSummary;
+  writeback: SyncLogJobSummary;
+};
+
+type ExecDomainAssessment = {
+  domain: string;
+  status: string;
+  lastEffectiveUpdateAtJst: string;
+  expectedCadence: string;
+  staleThreshold: string;
+  staleBy: string;
+  likelyIssueType: string;
+  likelyDecisionRisk: string;
+  recommendedCheck: string;
+  isStale: boolean;
+  isHighRisk: boolean;
+  likelyHumanUpdateOmission: boolean;
+};
+
+type ExecutiveFreshnessSnapshot = {
+  pipelines: ExecutivePipelineSummary;
+  domains: ExecDomainAssessment[];
+  staleDomainCount: number;
+  staleHighRiskDomainCount: number;
+  likelyHumanUpdateOmissionCount: number;
+  likelyHumanUpdateOmissionDomains: string[];
+  meetingRiskStatus: 'GO' | 'GO_WITH_CAUTION' | 'CHECK_BEFORE_MEETING';
+  criticalTeamIssueCount: number;
+};
+
+type ExecDomainConfig = {
+  domain: string;
+  anchorTimestamp: string;
+  expectedCadenceHours: number;
+  staleThresholdHours: number;
+  pipeline: SyncLogJobSummary;
+  pipelineStaleThresholdHours: number;
+  likelyDecisionRisk: string;
+  recommendedCheck: string;
+  warningSignalCount?: number;
+  highRiskSignalCount?: number;
+  extraWarningText?: string;
+};
+
+const EXEC_STATUS_HEALTHY = '更新良好';
+const EXEC_STATUS_WARNING = '要確認（更新遅れの可能性）';
+const EXEC_STATUS_HIGH_RISK = '高リスク（会議前に確認推奨）';
+const EXEC_ISSUE_OK = '更新良好';
+const EXEC_ISSUE_PIPELINE = '自動更新自体が未実行の可能性';
+const EXEC_ISSUE_HUMAN_OMISSION = '自動更新は成功 / 元データ更新漏れの可能性';
+const EXEC_ISSUE_SOURCE_STALE = '上流データ停滞の可能性';
+const EXEC_PIPELINE_PUBLISH_STALE_HOURS = 6;
+const EXEC_PIPELINE_WRITEBACK_STALE_HOURS = 36;
+const EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS = 36;
+
+function emptySyncLogJobSummary(jobName: string): SyncLogJobSummary {
+  return {
+    jobName,
+    latestSuccessAtMs: 0,
+    latestSuccessAtJst: '',
+    latestSuccessStats: {},
+  };
+}
+
+function summarizeExecutivePipelines(syncLogRows: Array<Record<string, string>>): ExecutivePipelineSummary {
+  const summaries: Record<string, SyncLogJobSummary> = {
+    runPublishAll: emptySyncLogJobSummary('runPublishAll'),
+    runFullRefresh: emptySyncLogJobSummary('runFullRefresh'),
+    runWritebackCollection: emptySyncLogJobSummary('runWritebackCollection'),
+  };
+
+  syncLogRows.forEach((row) => {
+    const jobName = row['job_name'] || '';
+    if (!(jobName in summaries)) return;
+    if (normalizeLower(row['status'] || '') !== 'success') return;
+    const parsedDate = parseViewDateValue(row['timestamp'] || '');
+    if (!parsedDate) return;
+    const timestampMs = parsedDate.getTime();
+    if (timestampMs <= summaries[jobName].latestSuccessAtMs) return;
+    summaries[jobName] = {
+      jobName,
+      latestSuccessAtMs: timestampMs,
+      latestSuccessAtJst: formatTrendTimestampJst(parsedDate),
+      latestSuccessStats: parseSyncLogStats(row['stats'] || ''),
+    };
+  });
+
+  return {
+    publish: summaries.runPublishAll,
+    fullRefresh: summaries.runFullRefresh,
+    writeback: summaries.runWritebackCollection,
+  };
+}
+
+function formatHoursLabel(hours: number): string {
+  if (!Number.isFinite(hours) || hours <= 0) return '0h';
+  if (hours % 24 === 0) return `${hours / 24}日`;
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return remainingHours > 0 ? `${days}日${remainingHours}h` : `${days}日`;
+  }
+  return `${hours}h`;
+}
+
+function hoursSinceTimestamp(timestamp: string, now: Date): number {
+  const parsed = parseViewDateValue(timestamp);
+  if (!parsed) return Number.POSITIVE_INFINITY;
+  return (now.getTime() - parsed.getTime()) / (1000 * 60 * 60);
+}
+
+function formatTimestampJst(timestamp: string): string {
+  const parsed = parseViewDateValue(timestamp);
+  return parsed ? formatTrendTimestampJst(parsed) : '';
+}
+
+function selectLatestTimestamp(current: string, candidate: string): string {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  const currentParsed = parseViewDateValue(current);
+  const candidateParsed = parseViewDateValue(candidate);
+  if (currentParsed && candidateParsed) {
+    return candidateParsed.getTime() > currentParsed.getTime() ? candidate : current;
+  }
+  if (candidateParsed) return candidate;
+  return current;
+}
+
+function latestTimestampFromRows(rows: Array<Record<string, string>>, fields: string[]): string {
+  let latest = '';
+  rows.forEach((row) => {
+    fields.forEach((field) => {
+      latest = selectLatestTimestamp(latest, row[field] || '');
+    });
+  });
+  return latest;
+}
+
+function buildExecDomainAssessment(config: ExecDomainConfig, now: Date): ExecDomainAssessment {
+  const warningSignalCount = config.warningSignalCount || 0;
+  const highRiskSignalCount = config.highRiskSignalCount || 0;
+  const noActivitySignals = !config.anchorTimestamp && warningSignalCount === 0 && highRiskSignalCount === 0;
+  const sourceAgeHours = hoursSinceTimestamp(config.anchorTimestamp, now);
+  const pipelineAgeHours = config.pipeline.latestSuccessAtMs > 0
+    ? (now.getTime() - config.pipeline.latestSuccessAtMs) / (1000 * 60 * 60)
+    : Number.POSITIVE_INFINITY;
+  const isSourceStale = noActivitySignals ? false : (!Number.isFinite(sourceAgeHours) || sourceAgeHours > config.staleThresholdHours);
+  const isPipelineStale = !Number.isFinite(pipelineAgeHours) || pipelineAgeHours > config.pipelineStaleThresholdHours;
+  const likelyHumanUpdateOmission = !isPipelineStale && isSourceStale;
+  const isHighRisk = isPipelineStale || (isSourceStale && highRiskSignalCount > 0);
+  const status = isHighRisk
+    ? EXEC_STATUS_HIGH_RISK
+    : (isSourceStale || warningSignalCount > 0 ? EXEC_STATUS_WARNING : EXEC_STATUS_HEALTHY);
+  const likelyIssueType = isPipelineStale
+    ? EXEC_ISSUE_PIPELINE
+    : (likelyHumanUpdateOmission ? EXEC_ISSUE_HUMAN_OMISSION : (isSourceStale ? EXEC_ISSUE_SOURCE_STALE : EXEC_ISSUE_OK));
+  const staleByHours = isSourceStale && Number.isFinite(sourceAgeHours)
+    ? Math.max(0, Math.round(sourceAgeHours - config.staleThresholdHours))
+    : 0;
+  const staleBy = noActivitySignals
+    ? '対象データなし'
+    : (!config.anchorTimestamp
+      ? '更新時刻未取得'
+      : (isSourceStale ? `${formatHoursLabel(staleByHours)}超過` : '閾値内'));
+  const riskSuffixParts: string[] = [];
+  if (warningSignalCount > 0) riskSuffixParts.push(`要確認件数 ${warningSignalCount}件`);
+  if (config.extraWarningText) riskSuffixParts.push(config.extraWarningText);
+  return {
+    domain: config.domain,
+    status,
+    lastEffectiveUpdateAtJst: formatTimestampJst(config.anchorTimestamp),
+    expectedCadence: formatHoursLabel(config.expectedCadenceHours),
+    staleThreshold: formatHoursLabel(config.staleThresholdHours),
+    staleBy,
+    likelyIssueType,
+    likelyDecisionRisk: riskSuffixParts.length > 0
+      ? `${config.likelyDecisionRisk}（${riskSuffixParts.join(' / ')}）`
+      : config.likelyDecisionRisk,
+    recommendedCheck: config.recommendedCheck,
+    isStale: isSourceStale,
+    isHighRisk,
+    likelyHumanUpdateOmission,
+  };
+}
+
+function buildExecutiveFreshnessSnapshot(
+  followupRows: Array<Record<string, string>>,
+  continuationRows: Array<Record<string, string>>,
+  exceptionRows: Array<Record<string, string>>,
+  plansRows: Array<Record<string, string>>,
+  paymentsRows: Array<Record<string, string>>,
+  conversionRows: Array<Record<string, string>>,
+  stagingPaymentsRows: Array<Record<string, string>>,
+  lineRegistrationRows: Array<Record<string, string>>,
+  continuationExceptionRows: Array<Record<string, string>>,
+  assignmentRows: Array<Record<string, string>>,
+  syncLogRows: Array<Record<string, string>>,
+): ExecutiveFreshnessSnapshot {
+  const pipelines = summarizeExecutivePipelines(syncLogRows);
+  const now = new Date();
+  const activePartnerAssignments = assignmentRows.filter((row) => (row['assignee_kind'] || '').toLowerCase() === 'partner' && !(row['ended_at'] || '') && (row['assignment_status'] || '').toLowerCase() !== 'ended');
+  const activeCoachAssignments = assignmentRows.filter((row) => (row['assignee_kind'] || '').toLowerCase() !== 'partner' && !(row['ended_at'] || '') && (row['assignment_status'] || '').toLowerCase() !== 'ended');
+  const lowSatisfactionCount = followupRows.filter((row) => normalizeLower(row['low_satisfaction_flag'] || '') === 'true').length;
+  const criticalTeamIssueCount = followupRows.length + exceptionRows.length + continuationExceptionRows.length;
+  const partnerWaitingFirstUpdateCount = activePartnerAssignments.filter((row) => !(row['last_partner_update_at'] || '')).length;
+  const partnerStaleCount = activePartnerAssignments.filter((row) => {
+    const anchor = row['last_partner_update_at'] || row['assigned_at'] || row['updated_at'] || row['created_at'] || '';
+    return daysSince(anchor, now) >= 30;
+  }).length;
+  const unresolvedPaymentRows = stagingPaymentsRows.filter((row) => !(row['customer_id'] || ''));
+  const unresolvedPaymentCount = stagingPaymentsRows.filter((row) => !(row['customer_id'] || '')).length;
+  const paymentPendingCount = stagingPaymentsRows.filter((row) => !isPaid(row)).length;
+  const unresolvedLineCount = lineRegistrationRows.filter((row) => !(row['customer_id'] || '')).length;
+  const openContinuationCount = continuationRows.length + continuationExceptionRows.length;
+  const aliasReviewOpenCount = exceptionRows.length + unresolvedPaymentCount;
+  const csAliasReviewAnchor = selectLatestTimestamp(
+    latestTimestampFromRows(exceptionRows, ['updated_at', 'submitted_at', 'last_collected_at', 'created_at']),
+    latestTimestampFromRows(unresolvedPaymentRows, ['updated_at', 'last_collected_at', 'created_at', 'paid_date', 'contract_date']),
+  );
+  const csContinuationReviewAnchor = latestTimestampFromRows(
+    [...continuationRows, ...continuationExceptionRows],
+    ['updated_at', 'last_collected_at', 'created_at'],
+  );
+
+  const domains = [
+    buildExecDomainAssessment({
+      domain: 'publish_pipeline',
+      anchorTimestamp: pipelines.publish.latestSuccessAtJst,
+      expectedCadenceHours: 1,
+      staleThresholdHours: EXEC_PIPELINE_PUBLISH_STALE_HOURS,
+      pipeline: pipelines.publish,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_PUBLISH_STALE_HOURS,
+      likelyDecisionRisk: '各タブは更新済みに見えても全体publish自体が古く、会議資料全体が過去状態のままの可能性',
+      recommendedCheck: 'POTEX DB > Sync_Log で runPublishAll の最新成功を確認',
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'commercial_payments',
+      anchorTimestamp: latestTimestampFromRows([...paymentsRows, ...stagingPaymentsRows], ['updated_at', 'paid_date', 'contract_date', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.writeback,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_WRITEBACK_STALE_HOURS,
+      likelyDecisionRisk: '入金実績・売上進捗が実態より少なく見える可能性',
+      recommendedCheck: '営業_未入金一覧 / CS_入金名寄せ確認 / 元の着金管理マスター更新状況を確認',
+      warningSignalCount: unresolvedPaymentCount,
+      highRiskSignalCount: unresolvedPaymentCount + paymentPendingCount,
+      extraWarningText: `未紐づけ ${unresolvedPaymentCount}件 / 未入金 ${paymentPendingCount}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'sales_funnel',
+      anchorTimestamp: latestTimestampFromRows(conversionRows, ['updated_at', 'event_date', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.fullRefresh,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS,
+      likelyDecisionRisk: '商談・成約・失注の進捗が昨日以前の状態で止まり、営業判断を誤る可能性',
+      recommendedCheck: '営業_ファネル推移 / ConversionHistory / 元営業シートの更新漏れを確認',
+      warningSignalCount: conversionRows.length > 0 ? 1 : 0,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'cs_alias_review',
+      anchorTimestamp: csAliasReviewAnchor,
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.writeback,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_WRITEBACK_STALE_HOURS,
+      likelyDecisionRisk: '未解決の名寄せ・紐づけ確認件数が見えている数より多い可能性',
+      recommendedCheck: 'CS_例外確認 / CS_入金名寄せ確認 / runWritebackCollection の最新成功を確認',
+      warningSignalCount: aliasReviewOpenCount,
+      highRiskSignalCount: exceptionRows.length,
+      extraWarningText: `例外 ${exceptionRows.length}件 / 入金未紐づけ ${unresolvedPaymentCount}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'cs_continuation_review',
+      anchorTimestamp: csContinuationReviewAnchor,
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.writeback,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_WRITEBACK_STALE_HOURS,
+      likelyDecisionRisk: '継続検討・継続名寄せの未処理件数が古く、継続率議論が実態より軽く見える可能性',
+      recommendedCheck: 'CS_継続対象一覧 / CS_継続名寄せ確認 / 元の継続プラン管理更新を確認',
+      warningSignalCount: openContinuationCount,
+      highRiskSignalCount: continuationExceptionRows.length,
+      extraWarningText: `継続対象 ${continuationRows.length}件 / 継続未紐づけ ${continuationExceptionRows.length}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'feedback_followup',
+      anchorTimestamp: latestTimestampFromRows([...followupRows, ...plansRows], ['updated_at', 'feedback_date', 'last_collected_at', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.fullRefresh,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS,
+      likelyDecisionRisk: '顧客リスク・クレーム候補・要フォロー案件が実態より少なく見える可能性',
+      recommendedCheck: 'CS_要フォロー一覧 / 顧客満足度系の元シート / 各担当者の更新漏れを確認',
+      warningSignalCount: followupRows.length,
+      highRiskSignalCount: lowSatisfactionCount,
+      extraWarningText: `要フォロー ${followupRows.length}件 / 低満足 ${lowSatisfactionCount}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'coach_assignment',
+      anchorTimestamp: latestTimestampFromRows(activeCoachAssignments, ['updated_at', 'assigned_at', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 48,
+      pipeline: pipelines.writeback,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_WRITEBACK_STALE_HOURS,
+      likelyDecisionRisk: '担当コーチ・負荷の見え方が古く、現場配分判断を誤る可能性',
+      recommendedCheck: 'Customer_Coach_Assignments / CS_担当割当入力 / 最新writeback結果を確認',
+      warningSignalCount: activeCoachAssignments.length > 0 ? 1 : 0,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'partner_status',
+      anchorTimestamp: latestTimestampFromRows(activePartnerAssignments, ['last_partner_update_at', 'updated_at', 'assigned_at', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 72,
+      pipeline: pipelines.writeback,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_WRITEBACK_STALE_HOURS,
+      likelyDecisionRisk: 'パートナー進捗が停滞して見える、または重要案件の進行が古いまま会議に出る可能性',
+      recommendedCheck: 'パートナー_状況入力 / last_partner_update_at / meeting_status 更新漏れを確認',
+      warningSignalCount: partnerWaitingFirstUpdateCount + partnerStaleCount,
+      highRiskSignalCount: partnerWaitingFirstUpdateCount + partnerStaleCount,
+      extraWarningText: `初回更新待ち ${partnerWaitingFirstUpdateCount}件 / 30日停滞 ${partnerStaleCount}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'line_registration',
+      anchorTimestamp: latestTimestampFromRows(lineRegistrationRows, ['updated_at', 'registered_at', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.fullRefresh,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS,
+      likelyDecisionRisk: '流入数・チャネル評価が古く、友だち追加や導線評価を誤る可能性',
+      recommendedCheck: 'LINE登録CSV取込 / Line_Registrations / attribution_tags 付与状況を確認',
+      warningSignalCount: unresolvedLineCount,
+      highRiskSignalCount: unresolvedLineCount,
+      extraWarningText: `未紐づけ ${unresolvedLineCount}件`,
+    }, now),
+    buildExecDomainAssessment({
+      domain: 'critical_team_issues',
+      anchorTimestamp: latestTimestampFromRows([...followupRows, ...exceptionRows, ...continuationExceptionRows], ['updated_at', 'feedback_date', 'submitted_at', 'last_collected_at', 'created_at']),
+      expectedCadenceHours: 24,
+      staleThresholdHours: 36,
+      pipeline: pipelines.fullRefresh,
+      pipelineStaleThresholdHours: EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS,
+      likelyDecisionRisk: '各チームの重要案件（クレーム含む）が実態より少なく見え、会議アジェンダ優先順位を誤る可能性',
+      recommendedCheck: 'CS_要フォロー一覧 / CS_例外確認 / 継続名寄せ確認 / 各担当者の元シート更新状況を確認',
+      warningSignalCount: criticalTeamIssueCount,
+      highRiskSignalCount: lowSatisfactionCount + continuationExceptionRows.length,
+      extraWarningText: `重要案件 ${criticalTeamIssueCount}件`,
+    }, now),
+  ];
+
+  const staleDomainCount = domains.filter((domain) => domain.isStale).length;
+  const staleHighRiskDomainCount = domains.filter((domain) => domain.isHighRisk).length;
+  const likelyHumanUpdateOmissionDomains = domains.filter((domain) => domain.likelyHumanUpdateOmission).map((domain) => domain.domain);
+  const likelyHumanUpdateOmissionCount = likelyHumanUpdateOmissionDomains.length;
+  const meetingRiskStatus: ExecutiveFreshnessSnapshot['meetingRiskStatus'] = staleHighRiskDomainCount > 0
+    ? 'CHECK_BEFORE_MEETING'
+    : (staleDomainCount > 0 || likelyHumanUpdateOmissionCount > 0 ? 'GO_WITH_CAUTION' : 'GO');
+
+  return {
+    pipelines,
+    domains,
+    staleDomainCount,
+    staleHighRiskDomainCount,
+    likelyHumanUpdateOmissionCount,
+    likelyHumanUpdateOmissionDomains,
+    meetingRiskStatus,
+    criticalTeamIssueCount,
+  };
+}
+
 export function buildExecReadme(): Array<Array<string>> {
   return [
     ['section', 'content'],
-    ['purpose', '経営・管理向けの参照ブックです。まず全体の異常有無を見て、そのあとにリスク顧客・例外推移・コーチ負荷を確認します。'],
-    ['read_first', 'まず 経営_データ状況 → 次に 経営_例外推移 → 必要に応じて 経営_顧客リスク / 経営_コーチ負荷 の順で見てください。'],
+    ['purpose', '経営・管理向けの参照ブックです。会議前にまず数字の鮮度と更新漏れリスクを確認し、その後に論点別タブを見ます。'],
+    ['read_first', 'まず 経営_会議前チェック → 次に 経営_更新状況 → 経営_データ状況 → 経営_例外推移 → 必要に応じて 経営_顧客リスク / 経営_コーチ負荷 の順で見てください。'],
     ['do_not_edit', 'このブックは参照専用です。数値や行を直接編集しないでください。修正が必要な場合は POTEX DB または各運用ブック側で対応します。'],
-    ['color_legend_red', '件数悪化、データ異常、優先対応が必要な状態です。'],
-    ['color_legend_orange', '本日中または近日中に確認したい状態です。'],
-    ['color_legend_green', '健全または改善方向の状態です。'],
-    ['how_to_read', '現在の状態は 経営_データ状況、増減トレンドは 経営_例外推移、個別の負荷や顧客リスクは各詳細タブで確認します。'],
-    ['escalation', '想定外の変動や急増がある場合は、POTEX DB の Sync_Log と exception 系タブを確認し、自動化担当へ連携してください。'],
+    ['color_legend_red', '会議前に確認したい高リスク状態です。更新遅れ・更新漏れ・自動化停止の可能性があります。'],
+    ['color_legend_orange', '更新遅れや人手更新漏れの疑いがあり、数字の読み方に注意が必要な状態です。'],
+    ['color_legend_green', '鮮度・件数ともに大きな懸念が見えていない状態です。'],
+    ['how_to_read', '会議前チェックで GO / GO_WITH_CAUTION / CHECK_BEFORE_MEETING を見て、更新状況タブで stale ドメインと想定バイアスを把握してください。'],
+    ['data_freshness', 'stale 警告は自動更新失敗だけでなく、担当者の元データ更新漏れでも発生します。'],
+    ['escalation', '想定外の変動や急増がある場合は、POTEX DB の Sync_Log と各運用タブを確認し、担当チームまたは自動化担当へ連携してください。'],
   ];
 }
 
@@ -759,6 +1140,101 @@ export function buildExecExceptionTrend(syncLogRows: Array<Record<string, string
   return [header, ...rows];
 }
 
+export function buildExecUpdateStatus(
+  followupRows: Array<Record<string, string>>,
+  continuationRows: Array<Record<string, string>>,
+  exceptionRows: Array<Record<string, string>>,
+  plansRows: Array<Record<string, string>>,
+  paymentsRows: Array<Record<string, string>>,
+  conversionRows: Array<Record<string, string>>,
+  stagingPaymentsRows: Array<Record<string, string>>,
+  lineRegistrationRows: Array<Record<string, string>>,
+  continuationExceptionRows: Array<Record<string, string>> = [],
+  assignmentRows: Array<Record<string, string>> = [],
+  syncLogRows: Array<Record<string, string>> = [],
+): Array<Array<string>> {
+  const snapshot = buildExecutiveFreshnessSnapshot(
+    followupRows,
+    continuationRows,
+    exceptionRows,
+    plansRows,
+    paymentsRows,
+    conversionRows,
+    stagingPaymentsRows,
+    lineRegistrationRows,
+    continuationExceptionRows,
+    assignmentRows,
+    syncLogRows,
+  );
+
+  return [
+    ['domain', 'status', 'last_effective_update_at_jst', 'expected_cadence', 'stale_threshold', 'stale_by', 'likely_issue_type', 'likely_decision_risk', 'recommended_check'],
+    ...snapshot.domains.map((domain) => [
+      domain.domain,
+      domain.status,
+      domain.lastEffectiveUpdateAtJst,
+      domain.expectedCadence,
+      domain.staleThreshold,
+      domain.staleBy,
+      domain.likelyIssueType,
+      domain.likelyDecisionRisk,
+      domain.recommendedCheck,
+    ]),
+  ];
+}
+
+export function buildExecMeetingCheck(
+  followupRows: Array<Record<string, string>>,
+  continuationRows: Array<Record<string, string>>,
+  exceptionRows: Array<Record<string, string>>,
+  plansRows: Array<Record<string, string>>,
+  paymentsRows: Array<Record<string, string>>,
+  conversionRows: Array<Record<string, string>>,
+  stagingPaymentsRows: Array<Record<string, string>>,
+  lineRegistrationRows: Array<Record<string, string>>,
+  continuationExceptionRows: Array<Record<string, string>> = [],
+  assignmentRows: Array<Record<string, string>> = [],
+  syncLogRows: Array<Record<string, string>> = [],
+): Array<Array<string>> {
+  const snapshot = buildExecutiveFreshnessSnapshot(
+    followupRows,
+    continuationRows,
+    exceptionRows,
+    plansRows,
+    paymentsRows,
+    conversionRows,
+    stagingPaymentsRows,
+    lineRegistrationRows,
+    continuationExceptionRows,
+    assignmentRows,
+    syncLogRows,
+  );
+  const now = new Date();
+  const publishFresh = snapshot.pipelines.publish.latestSuccessAtMs > 0
+    && ((now.getTime() - snapshot.pipelines.publish.latestSuccessAtMs) / (1000 * 60 * 60) <= EXEC_PIPELINE_PUBLISH_STALE_HOURS);
+  const fullRefreshFresh = snapshot.pipelines.fullRefresh.latestSuccessAtMs > 0
+    && ((now.getTime() - snapshot.pipelines.fullRefresh.latestSuccessAtMs) / (1000 * 60 * 60) <= EXEC_PIPELINE_FULL_REFRESH_STALE_HOURS);
+  const writebackFresh = snapshot.pipelines.writeback.latestSuccessAtMs > 0
+    && ((now.getTime() - snapshot.pipelines.writeback.latestSuccessAtMs) / (1000 * 60 * 60) <= EXEC_PIPELINE_WRITEBACK_STALE_HOURS);
+  const overallDetail = snapshot.meetingRiskStatus === 'GO'
+    ? '主要ドメインに重大な stale は見えていません。通常どおり会議を進められます。'
+    : (snapshot.meetingRiskStatus === 'GO_WITH_CAUTION'
+      ? '会議は進められますが、stale ドメインと更新漏れ疑いを前提に数字を読み解いてください。'
+      : '会議前に stale ドメインまたは自動更新状況を確認し、数字の利用可否を先に合わせてください。');
+
+  return [
+    ['check_item', 'status', 'detail'],
+    ['publish freshness', publishFresh ? 'OK' : 'NG', snapshot.pipelines.publish.latestSuccessAtJst || 'runPublishAll の成功履歴が見つかりません'],
+    ['full refresh freshness', fullRefreshFresh ? 'OK' : 'NG', snapshot.pipelines.fullRefresh.latestSuccessAtJst || 'runFullRefresh の成功履歴が見つかりません'],
+    ['writeback freshness', writebackFresh ? 'OK' : 'NG', snapshot.pipelines.writeback.latestSuccessAtJst || 'runWritebackCollection の成功履歴が見つかりません'],
+    ['stale domains present', snapshot.staleDomainCount === 0 ? 'OK' : 'CHECK', `${snapshot.staleDomainCount}件`],
+    ['high risk stale domains present', snapshot.staleHighRiskDomainCount === 0 ? 'OK' : 'CHECK', `${snapshot.staleHighRiskDomainCount}件`],
+    ['likely human update omissions present', snapshot.likelyHumanUpdateOmissionCount === 0 ? 'OK' : 'CHECK', snapshot.likelyHumanUpdateOmissionDomains.join(', ') || 'なし'],
+    ['critical team issues in meeting scope', snapshot.criticalTeamIssueCount === 0 ? 'OK' : 'CHECK', `${snapshot.criticalTeamIssueCount}件（クレーム/要フォロー/未紐づけ含む）`],
+    ['overall meeting risk', snapshot.meetingRiskStatus, overallDetail],
+  ];
+}
+
 export function buildExecDataHealth(
   customersRows: Array<Record<string, string>>,
   coachesRows: Array<Record<string, string>>,
@@ -774,6 +1250,7 @@ export function buildExecDataHealth(
   lineRegistrationRows: Array<Record<string, string>>,
   continuationExceptionRows: Array<Record<string, string>> = [],
   assignmentRows: Array<Record<string, string>> = [],
+  syncLogRows: Array<Record<string, string>> = [],
 ): Array<Array<string>> {
   const header = ['metric', 'value', 'note'];
   const unmatchedPayments = stagingPaymentsRows.filter((row) => !(row['customer_id'] || '')).length;
@@ -797,8 +1274,30 @@ export function buildExecDataHealth(
     if (feedbackResponseIds.has(rid)) feedbackResponseIdCollisions += 1;
     feedbackResponseIds.add(rid);
   });
+  const freshness = buildExecutiveFreshnessSnapshot(
+    followupRows,
+    continuationRows,
+    exceptionRows,
+    plansRows,
+    paymentsRows,
+    conversionRows,
+    stagingPaymentsRows,
+    lineRegistrationRows,
+    continuationExceptionRows,
+    assignmentRows,
+    syncLogRows,
+  );
   return [
     header,
+    ['last_publish_success_at_jst', freshness.pipelines.publish.latestSuccessAtJst, 'Sync_Log で確認できる最新の runPublishAll 成功日時です。'],
+    ['last_full_refresh_success_at_jst', freshness.pipelines.fullRefresh.latestSuccessAtJst, 'Sync_Log で確認できる最新の runFullRefresh 成功日時です。'],
+    ['last_writeback_success_at_jst', freshness.pipelines.writeback.latestSuccessAtJst, 'Sync_Log で確認できる最新の runWritebackCollection 成功日時です。'],
+    ['stale_domain_count', String(freshness.staleDomainCount), '経営_更新状況 で stale 判定になったドメイン数です。'],
+    ['stale_high_risk_domain_count', String(freshness.staleHighRiskDomainCount), '会議前に確認推奨の高リスク stale ドメイン数です。'],
+    ['likely_human_update_omission_count', String(freshness.likelyHumanUpdateOmissionCount), '自動更新は走っているが元データ更新漏れの可能性があるドメイン数です。'],
+    ['domains_with_likely_human_update_omission', freshness.likelyHumanUpdateOmissionDomains.join(', '), '更新漏れ疑いのあるドメイン一覧です。'],
+    ['meeting_risk_status', freshness.meetingRiskStatus, '経営_会議前チェック と同じ最終判断ステータスです。'],
+    ['critical_team_issue_count', String(freshness.criticalTeamIssueCount), '会議論点になりやすい要フォロー / 例外 / クレーム候補件数の概算です。'],
     ['customers_count', String(customersRows.length), 'canonical Customers の行数です。'],
     ['coaches_count', String(coachesRows.length), 'canonical Coaches の行数です。'],
     ['sessions_count', String(sessionsRows.length), 'canonical Sessions の行数です。'],

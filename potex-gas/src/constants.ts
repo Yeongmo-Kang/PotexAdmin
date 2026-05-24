@@ -61,6 +61,8 @@ export const VIEWS = {
   SALES_FUNNEL_EVENTS: '営業_ファネル推移',
   SALES_DATA_HEALTH: '営業_データ状況',
   EXEC_README: '経営_使い方',
+  EXEC_MEETING_CHECK: '経営_会議前チェック',
+  EXEC_UPDATE_STATUS: '経営_更新状況',
   EXEC_COACH_LOAD_SUMMARY: '経営_コーチ負荷',
   EXEC_CUSTOMER_RISK_SUMMARY: '経営_顧客リスク',
   EXEC_DATA_HEALTH: '経営_データ状況',

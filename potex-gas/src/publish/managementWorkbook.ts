@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from '../config';
 import { SHEETS, VIEWS } from '../constants';
 import { readSheetAsObjects, readSheetAsObjectsOrEmpty, clearAndRewrite, openSpreadsheetById } from '../sheets';
-import { buildExecReadme, buildExecCoachLoad, buildExecCustomerRiskSummary, buildExecDataHealth, buildExecExceptionTrend } from './views';
+import { buildExecReadme, buildExecMeetingCheck, buildExecUpdateStatus, buildExecCoachLoad, buildExecCustomerRiskSummary, buildExecDataHealth, buildExecExceptionTrend } from './views';
 
 export function publishExecutiveWorkbook(): void {
   const cfg = getRuntimeConfig();
@@ -28,6 +28,32 @@ export function publishExecutiveWorkbook(): void {
   const syncLogRows = readSheetAsObjectsOrEmpty(db, SHEETS.SYNC_LOG);
 
   clearAndRewrite(exec, VIEWS.EXEC_README, buildExecReadme());
+  clearAndRewrite(exec, VIEWS.EXEC_MEETING_CHECK, buildExecMeetingCheck(
+    feedbackRows,
+    continuationRows,
+    exceptionRows,
+    plansRows,
+    paymentsRows,
+    conversionRows,
+    stagingPaymentsRows,
+    lineRegistrationRows,
+    continuationExceptionRows,
+    customerCoachAssignmentRows,
+    syncLogRows,
+  ));
+  clearAndRewrite(exec, VIEWS.EXEC_UPDATE_STATUS, buildExecUpdateStatus(
+    feedbackRows,
+    continuationRows,
+    exceptionRows,
+    plansRows,
+    paymentsRows,
+    conversionRows,
+    stagingPaymentsRows,
+    lineRegistrationRows,
+    continuationExceptionRows,
+    customerCoachAssignmentRows,
+    syncLogRows,
+  ));
   clearAndRewrite(exec, VIEWS.EXEC_COACH_LOAD_SUMMARY, buildExecCoachLoad(coachLoadRows));
   clearAndRewrite(exec, VIEWS.EXEC_CUSTOMER_RISK_SUMMARY, buildExecCustomerRiskSummary(feedbackRows, exceptionRows));
   clearAndRewrite(exec, VIEWS.EXEC_DATA_HEALTH, buildExecDataHealth(
@@ -45,6 +71,7 @@ export function publishExecutiveWorkbook(): void {
     lineRegistrationRows,
     continuationExceptionRows,
     customerCoachAssignmentRows,
+    syncLogRows,
   ));
   clearAndRewrite(exec, VIEWS.EXEC_EXCEPTION_TREND, buildExecExceptionTrend(syncLogRows));
 }

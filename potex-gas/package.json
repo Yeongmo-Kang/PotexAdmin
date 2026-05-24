@@ -5,11 +5,11 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "npm run typecheck && node ./scripts/build-gas.mjs",
-    "push": "clasp push -f",
-    "pull": "clasp pull",
-    "deploy": "npm run build && clasp push -f",
-    "open": "clasp open",
-    "logs": "clasp logs --watch"
+    "push": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp push -f -A $HOME/.clasprc.json",
+    "pull": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp pull -A $HOME/.clasprc.json",
+    "deploy": "npm run build && PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp push -f -A $HOME/.clasprc.json",
+    "open": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp open -A $HOME/.clasprc.json",
+    "logs": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp logs --watch -A $HOME/.clasprc.json"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2",

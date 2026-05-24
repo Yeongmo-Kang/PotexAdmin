@@ -6,6 +6,7 @@ This is the dedicated Hermes project folder for Potex work.
 - Keep Potex work isolated from other projects
 - Preserve project-specific docs, scripts, outputs, and session state
 - Prefer spreadsheet-first operations and clear runbooks for non-technical operators
+- Treat the GitHub repo as the primary source of truth; local files are a working copy / backup only
 
 ## Non-Negotiable Rule
 **Do not modify or delete currently operating source/reference spreadsheets.**
@@ -40,6 +41,8 @@ If someone is new to this project, read in this order:
 9. `agents/session.md`
 
 ## Authoritative Docs
+- Primary canonical location for docs/code: GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`)
+- Local workspace copy under `/home/ubuntu/.hermes/projects/PotexAdmin` is for implementation, inspection, and backup
 - Database overview: `docs/database-overview.md`
 - Sheet-by-sheet reference: `docs/sheet-reference.md`
 - Operator manual: `OPERATIONS_MANUAL.md`
@@ -50,7 +53,9 @@ If someone is new to this project, read in this order:
 - Session checkpoint: `agents/session.md`
 
 ## Workspace Rules
-- Manage Potex from this folder: `/mnt/c/Users/zerom/Desktop/DevZero/projects/potex`
+- Manage Potex from this repo workspace: `/home/ubuntu/.hermes/projects/PotexAdmin`
+- Treat GitHub `main` as the primary history and handoff surface
+- Reflect important doc/plan/status changes in the repo first; local-only notes are temporary backups unless they are committed
 - Treat source Google Sheets as read-only operational sources
 - Prefer DB hub -> role workbook publish/writeback flow over ad-hoc local fixes
 - Keep live session checkpoints in `agents/session.md`
