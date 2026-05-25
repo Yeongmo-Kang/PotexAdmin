@@ -9,6 +9,7 @@ export type RuntimeConfig = {
   execSpreadsheetId?: string;
   inaiSpreadsheetId?: string;
   satoSpreadsheetId?: string;
+  customerV2SpreadsheetId?: string;
   enableConcierge: boolean;
   enableSales: boolean;
   enableCoaches: boolean;
@@ -31,6 +32,7 @@ const DEFAULT_SCRIPT_PROPERTIES: Record<string, string> = {
   [PROPS.EXEC_SPREADSHEET_ID]: '1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY',
   [PROPS.INAI_SPREADSHEET_ID]: '',
   [PROPS.SATO_SPREADSHEET_ID]: '',
+  [PROPS.CUSTOMER_V2_SPREADSHEET_ID]: '',
   [PROPS.ENABLE_CONCIERGE]: 'false',
   [PROPS.ENABLE_SALES]: 'true',
   [PROPS.ENABLE_COACHES]: 'true',
@@ -74,6 +76,7 @@ export function getRuntimeConfig(): RuntimeConfig {
   const coachesSpreadsheetId = getProp(PROPS.COACHES_SPREADSHEET_ID) || undefined;
   const inaiSpreadsheetId = getProp(PROPS.INAI_SPREADSHEET_ID) || undefined;
   const satoSpreadsheetId = getProp(PROPS.SATO_SPREADSHEET_ID) || undefined;
+  const customerV2SpreadsheetId = getProp(PROPS.CUSTOMER_V2_SPREADSHEET_ID) || undefined;
   return {
     dbSpreadsheetId: getProp(PROPS.DB_SPREADSHEET_ID),
     csSpreadsheetId: getProp(PROPS.CS_SPREADSHEET_ID),
@@ -83,6 +86,7 @@ export function getRuntimeConfig(): RuntimeConfig {
     execSpreadsheetId: getProp(PROPS.EXEC_SPREADSHEET_ID) || undefined,
     inaiSpreadsheetId,
     satoSpreadsheetId,
+    customerV2SpreadsheetId,
     enableConcierge: asBool(getProp(PROPS.ENABLE_CONCIERGE)) || Boolean(conciergeSpreadsheetId),
     enableSales: asBool(getProp(PROPS.ENABLE_SALES)) || Boolean(salesSpreadsheetId),
     enableCoaches: asBool(getProp(PROPS.ENABLE_COACHES)) || Boolean(coachesSpreadsheetId),

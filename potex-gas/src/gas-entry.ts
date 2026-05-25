@@ -7,8 +7,11 @@ import {
   provisionPartnerWorkbooks,
   runCanonicalRefresh,
   runFullRefresh,
+  runImportCsvD,
   runPublishAll,
+  runPublishCustomerV2,
   runWritebackCollection,
+  runWritebackCustomerV2,
 } from './main';
 import {
   deleteManagedTriggers,
@@ -23,8 +26,11 @@ import {
   menuReinstallTriggers,
   menuRunCanonicalRefresh,
   menuRunFullRefresh,
+  menuRunImportCsvD,
   menuRunPublishAll,
+  menuRunPublishCustomerV2,
   menuRunWritebackCollection,
+  menuRunWritebackCustomerV2,
   menuValidateEnvironment,
   onOpen,
 } from './ui/menu';
@@ -41,6 +47,9 @@ globalThis.__potex = {
   runFullRefresh,
   runPublishAll,
   runWritebackCollection,
+  runImportCsvD,
+  runPublishCustomerV2,
+  runWritebackCustomerV2,
   provisionPartnerWorkbooks,
   dropLegacyPartnerSheets,
   dropOrphanStagingLineRegistration,
@@ -58,5 +67,8 @@ globalThis.__potex = {
   menuRunFullRefresh,
   menuRunPublishAll,
   menuRunWritebackCollection,
+  menuRunImportCsvD,
+  menuRunPublishCustomerV2,
+  menuRunWritebackCustomerV2,
   menuReinstallTriggers,
 };

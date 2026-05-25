@@ -10,6 +10,7 @@
         "Staging_Feedback",
         "Staging_Payments",
         "Staging_LineRegistration",
+        "Import_csvD",
         "Customers",
         "Coaches",
         "Sessions",
@@ -370,6 +371,28 @@
           "metric",
           "value",
           "note"
+        ]
+      }
+    },
+    "customer_v2": {
+      "name": "POTEX_顧客管理_v2",
+      "existing_spreadsheet_id": "",
+      "tabs": {
+        "顧客一覧_成約以降": [
+          "customer_id",
+          "表示名",
+          "成約日",
+          "成約後経過月数",
+          "現プラン",
+          "AFS状態",
+          "担当コーチ",
+          "直近入金日",
+          "未入金フラグ",
+          "LINE状態",
+          "要対応フラグ",
+          "アップグレード余地",
+          "今後提案可能性",
+          "last_synced_at"
         ]
       }
     }

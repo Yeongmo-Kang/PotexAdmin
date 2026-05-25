@@ -4,12 +4,14 @@ import { publishCoachesWorkbook } from './publish/coachWorkbook';
 import { publishConciergeWorkbook } from './publish/conciergeWorkbook';
 import { publishSalesWorkbook } from './publish/salesWorkbook';
 import { publishPartnerWorkbooks } from './publish/partnerWorkbook';
+import { publishCustomerWorkbook } from './publish/customerWorkbook';
 import { collectCsWritebackRows } from './writeback/csWriteback';
 import { collectPartnerStatusWritebackRows } from './writeback/partnerStatusWriteback';
 import { getRuntimeConfig, type RuntimeConfig } from './config';
 import { appendSyncLog } from './logging';
 import { withScriptLock } from './locks';
 import { refreshCanonicalStaging } from './canonical/ingest';
+import { runImportCsvDIngest } from './canonical/lstepCsv';
 import { openSpreadsheetById } from './sheets';
 import { PROPS } from './constants';
 import { PARTNER_ASSIGNEES } from './partners';
@@ -214,4 +216,55 @@ export function provisionPartnerWorkbooks(): void {
 export function dropLegacyPartnerSheets(): void {
   const cleanup = cleanupLegacyPartnerArtifacts(getRuntimeConfig());
   appendSyncLog('dropLegacyPartnerSheets', 'success', cleanup);
+}
+
+export function runImportCsvD(): void {
+  withScriptLock('runImportCsvD', () => {
+    const cfg = getRuntimeConfig();
+    const stats = runImportCsvDIngest(cfg);
+    appendSyncLog('runImportCsvD', 'success', stats as unknown as SyncLogDetails);
+    try {
+      const ui = SpreadsheetApp.getUi();
+      ui.alert(
+        'csvD取込 完了',
+        [
+          `合計行: ${stats.csvDRowsTotal}`,
+          `新規: ${stats.csvDRowsInserted} / 更新: ${stats.csvDRowsUpdated} / absentマーク: ${stats.csvDRowsAbsentMarked}`,
+          `成約: ${stats.csvDContractedCount}`,
+          `未知列: ${stats.csvDUnknownLstepColumns}${stats.csvDUnknownColumnNames ? ' (' + stats.csvDUnknownColumnNames + ')' : ''}`,
+          stats.csvDHeaderDriftDetected ? '※ LStep ID 行に未知パターンを検出。Sync_Log を確認してください。' : '',
+        ].filter(Boolean).join('\n'),
+        ui.ButtonSet.OK,
+      );
+    } catch (error) {
+      // UI may be unavailable when triggered from headless context
+    }
+  });
+}
+
+export function runPublishCustomerV2(): void {
+  withScriptLock('runPublishCustomerV2', () => {
+    publishCustomerWorkbook();
+    appendSyncLog('runPublishCustomerV2', 'success');
+    try {
+      SpreadsheetApp.getUi().alert('v2公開 完了', 'POTEX_顧客管理_v2 の表示タブを再生成しました。', SpreadsheetApp.getUi().ButtonSet.OK);
+    } catch (error) {
+      // UI may be unavailable
+    }
+  });
+}
+
+export function runWritebackCustomerV2(): void {
+  withScriptLock('runWritebackCustomerV2', () => {
+    appendSyncLog('runWritebackCustomerV2', 'no_op', { reason: 'phase_a_stub' });
+    try {
+      SpreadsheetApp.getUi().alert(
+        'v2書戻し (Phase A スタブ)',
+        'Phase A 시점에서는 v2 input 탭이 아직 정의되지 않았습니다. Phase B에서 본구현 예정.',
+        SpreadsheetApp.getUi().ButtonSet.OK,
+      );
+    } catch (error) {
+      // UI may be unavailable
+    }
+  });
 }

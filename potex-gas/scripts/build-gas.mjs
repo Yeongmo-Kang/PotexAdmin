@@ -13,6 +13,9 @@ const exposedFunctions = [
   'runFullRefresh',
   'runPublishAll',
   'runWritebackCollection',
+  'runImportCsvD',
+  'runPublishCustomerV2',
+  'runWritebackCustomerV2',
   'dropOrphanStagingLineRegistration',
   'dropOrphanStagingFeedback',
   'installTriggers',
@@ -28,6 +31,9 @@ const exposedFunctions = [
   'menuRunFullRefresh',
   'menuRunPublishAll',
   'menuRunWritebackCollection',
+  'menuRunImportCsvD',
+  'menuRunPublishCustomerV2',
+  'menuRunWritebackCustomerV2',
   'menuReinstallTriggers',
 ];
 
