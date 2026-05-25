@@ -28,5 +28,15 @@
     "spreadsheet_id": "19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc",
     "name": "Potex Coaches",
     "url": "https://docs.google.com/spreadsheets/d/19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc/edit?usp=drivesdk"
+  },
+  "sato": {
+    "spreadsheet_id": "1bgXCO37F5df2GZq0eMqHPtWqwp3mEv3a8db8qXXI9Vs",
+    "name": "Potex Sato",
+    "url": "https://docs.google.com/spreadsheets/d/1bgXCO37F5df2GZq0eMqHPtWqwp3mEv3a8db8qXXI9Vs/edit?usp=drivesdk"
+  },
+  "inai": {
+    "spreadsheet_id": "1-Agxx7CsAhAAQVr9IDq91hb5yVEFt5zqP6aghGRKH-I",
+    "name": "Potex Inai",
+    "url": "https://docs.google.com/spreadsheets/d/1-Agxx7CsAhAAQVr9IDq91hb5yVEFt5zqP6aghGRKH-I/edit?usp=drivesdk"
   }
 }

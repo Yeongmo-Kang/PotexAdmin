@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -10,15 +12,19 @@ from googleapiclient.discovery import build
 
 TOKEN = Path.home() / '.hermes' / 'google_token.json'
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+GENERATED_SCRIPT_PROPS = Path(__file__).resolve().parents[1] / 'generated' / 'phase1_script_properties.json'
 
-WORKBOOKS = {
+BASE_WORKBOOKS = {
     'cs': '1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg',
     'exec': '1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY',
     'concierge': '1c-Ie03M619iMqhwqV1jHPSYDVPTMHPPKs6zhSr8QPr8',
     'sales': '1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao',
     'coaches': '19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc',
     'db': '1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs',
+    'sato': '',
+    'inai': '',
 }
+WORKBOOKS: dict[str, str] = {}
 
 COLORS = {
     'blue': (0.11, 0.47, 0.72),
@@ -27,6 +33,42 @@ COLORS = {
     'purple': (0.56, 0.27, 0.68),
     'gray': (0.38, 0.38, 0.38),
 }
+
+
+
+def load_generated_script_properties() -> dict[str, str]:
+    if not GENERATED_SCRIPT_PROPS.exists():
+        return {}
+    try:
+        data = json.loads(GENERATED_SCRIPT_PROPS.read_text())
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items() if isinstance(v, (str, int, float))}
+    except Exception:
+        return {}
+    return {}
+
+
+def resolve_workbooks(cli_sato_id: str = '', cli_inai_id: str = '') -> dict[str, str]:
+    script_props = load_generated_script_properties()
+    workbooks = dict(BASE_WORKBOOKS)
+    overrides = {
+        'cs': script_props.get('CS_SPREADSHEET_ID', ''),
+        'exec': script_props.get('EXEC_SPREADSHEET_ID', ''),
+        'concierge': script_props.get('CONCIERGE_SPREADSHEET_ID', ''),
+        'sales': script_props.get('SALES_SPREADSHEET_ID', ''),
+        'coaches': script_props.get('COACHES_SPREADSHEET_ID', ''),
+        'db': script_props.get('DB_SPREADSHEET_ID', ''),
+        'sato': cli_sato_id or os.environ.get('POTEX_SATO_SPREADSHEET_ID', '') or script_props.get('SATO_SPREADSHEET_ID', ''),
+        'inai': cli_inai_id or os.environ.get('POTEX_INAI_SPREADSHEET_ID', '') or script_props.get('INAI_SPREADSHEET_ID', ''),
+    }
+    for key, value in overrides.items():
+        if value:
+            workbooks[key] = value
+    return workbooks
+
+
+def active_scopes() -> list[str]:
+    return [scope for scope, spreadsheet_id in WORKBOOKS.items() if spreadsheet_id]
 
 BGS = {
     'red': {'red': 0.98, 'green': 0.89, 'blue': 0.89},
@@ -89,6 +131,26 @@ README_VALUES = {
         ['色の意味(橙)', '注意・件数多め・近日確認'],
         ['色の意味(緑)', '良好・解消済みに近い状態'],
     ],
+    ('sato', 'パートナー_使い方'): [
+        ['項目', '内容'],
+        ['このブックの目的', '佐藤担当の partner 更新ブックです。担当 lead の状況確認と status 入力に使います。'],
+        ['最初に見る順番', '1) パートナー_担当リード → 2) パートナー_状況入力 → 3) パートナー_データ状況'],
+        ['日次の進め方', '① 担当案件確認 → ② 必要な status を入力 → ③ submit_update=TRUE で次回 writeback 反映待ち → ④ data health を確認'],
+        ['編集ルール', '黄色の入力列だけ編集してください。assignment 自体の変更は Potex CS 側で行います。'],
+        ['色の意味(赤)', '長期未更新・重要確認'],
+        ['色の意味(橙)', '更新待ち・近日確認'],
+        ['色の意味(緑)', '更新済み・良好'],
+    ],
+    ('inai', 'パートナー_使い方'): [
+        ['項目', '内容'],
+        ['このブックの目的', '稲井担当の partner 更新ブックです。担当 lead の状況確認と status 入力に使います。'],
+        ['最初に見る順番', '1) パートナー_担当リード → 2) パートナー_状況入力 → 3) パートナー_データ状況'],
+        ['日次の進め方', '① 担当案件確認 → ② 必要な status を入力 → ③ submit_update=TRUE で次回 writeback 反映待ち → ④ data health を確認'],
+        ['編集ルール', '黄色の入力列だけ編集してください。assignment 自体の変更は Potex CS 側で行います。'],
+        ['色の意味(赤)', '長期未更新・重要確認'],
+        ['色の意味(橙)', '更新待ち・近日確認'],
+        ['色の意味(緑)', '更新済み・良好'],
+    ],
 }
 
 HIDE_COLUMNS = {
@@ -100,6 +162,10 @@ HIDE_COLUMNS = {
     ('cs', 'CS_担当割当入力'): ['lead_id', 'suggested_assignee_id', 'current_assignee_id', 'suggested_assignee_scope', 'form_response_sheet', 'form_response_row'],
     ('cs', 'CS_入金名寄せ確認'): ['payment_id', 'payment_source_sheet', 'payment_source_row', 'candidate_line_registration_id'],
     ('cs', 'CS_継続名寄せ確認'): ['continuation_exception_id', 'candidate_line_registration_id'],
+    ('sato', 'パートナー_担当リード'): ['lead_id', 'customer_id'],
+    ('sato', 'パートナー_状況入力'): ['lead_id', 'customer_id', 'coach_id', 'sync_status', 'last_collected_at'],
+    ('inai', 'パートナー_担当リード'): ['lead_id', 'customer_id'],
+    ('inai', 'パートナー_状況入力'): ['lead_id', 'customer_id', 'coach_id', 'sync_status', 'last_collected_at'],
 }
 
 BASELINE = {
@@ -139,6 +205,18 @@ BASELINE = {
         'コンシェルジュ_フォロー一覧': {'frozen_cols': 3, 'tab_color': 'blue', 'header_color': 'blue'},
         'コンシェルジュ_データ状況': {'frozen_cols': 1, 'tab_color': 'teal', 'header_color': 'teal'},
     },
+    'sato': {
+        'パートナー_使い方': {'frozen_cols': 0, 'tab_color': 'gray', 'header_color': 'gray'},
+        'パートナー_担当リード': {'frozen_cols': 3, 'tab_color': 'blue', 'header_color': 'blue'},
+        'パートナー_状況入力': {'frozen_cols': 5, 'tab_color': 'teal', 'header_color': 'teal'},
+        'パートナー_データ状況': {'frozen_cols': 1, 'tab_color': 'purple', 'header_color': 'purple'},
+    },
+    'inai': {
+        'パートナー_使い方': {'frozen_cols': 0, 'tab_color': 'gray', 'header_color': 'gray'},
+        'パートナー_担当リード': {'frozen_cols': 3, 'tab_color': 'blue', 'header_color': 'blue'},
+        'パートナー_状況入力': {'frozen_cols': 5, 'tab_color': 'teal', 'header_color': 'teal'},
+        'パートナー_データ状況': {'frozen_cols': 1, 'tab_color': 'purple', 'header_color': 'purple'},
+    },
     'db': {
         'Sync_Log': {'frozen_cols': 1, 'tab_color': 'purple', 'header_color': 'purple'},
         'Sync_Control': {'frozen_cols': 1, 'tab_color': 'gray', 'header_color': 'gray'},
@@ -155,6 +233,8 @@ EDITABLE_COLUMNS = {
     ('cs', 'CS_担当割当入力'): ['operator_decision_status', 'operator_selected_assignee_name', 'assignment_note'],
     ('cs', 'CS_入金名寄せ確認'): ['operator_decision_status', 'operator_selected_customer_name', 'operator_selected_customer_id', 'operator_note'],
     ('cs', 'CS_継続名寄せ確認'): ['operator_decision_status', 'operator_selected_customer_name', 'operator_selected_customer_id', 'operator_note'],
+    ('sato', 'パートナー_状況入力'): ['operator_meeting_status', 'operator_meeting_done_at', 'operator_potex_sale_status', 'operator_recruitment_status', 'operator_partner_status_note', 'submit_update'],
+    ('inai', 'パートナー_状況入力'): ['operator_meeting_status', 'operator_meeting_done_at', 'operator_potex_sale_status', 'operator_recruitment_status', 'operator_partner_status_note', 'submit_update'],
 }
 
 HEADER_NOTES = {
@@ -196,6 +276,16 @@ README_EXTRA_ROWS = {
         ['コンシェルジュ_フォロー一覧', '顧客フォローの背景確認用です。対応状況・受講状態・フォロー理由・顧客コメントを見て状況を把握します。'],
         ['コンシェルジュ_データ状況', 'コンシェルジュ向けデータ健全性確認です。followup_queue_count や例外件数の変化を見ます。'],
     ],
+    ('sato', 'パートナー_使い方'): [
+        ['パートナー_担当リード', '現在担当している lead / customer 一覧です。meeting / sale / recruitment status の現況確認に使います。'],
+        ['パートナー_状況入力', 'status 更新入力です。operator_* 列だけ編集し、submit_update を TRUE にして次回 writeback を待ちます。'],
+        ['パートナー_データ状況', 'stale 件数や更新状況の異常確認です。'],
+    ],
+    ('inai', 'パートナー_使い方'): [
+        ['パートナー_担当リード', '現在担当している lead / customer 一覧です。meeting / sale / recruitment status の現況確認に使います。'],
+        ['パートナー_状況入力', 'status 更新入力です。operator_* 列だけ編集し、submit_update を TRUE にして次回 writeback を待ちます。'],
+        ['パートナー_データ状況', 'stale 件数や更新状況の異常確認です。'],
+    ],
 }
 
 SHEET_GUIDES = {
@@ -218,6 +308,12 @@ SHEET_GUIDES = {
     ('coaches', 'コーチ_データ状況'): 'このシートの目的: コーチ向けデータ件数の健全性確認です。\n見る順番: metric → value → note。\n操作: followup_customer_count や低満足件数の増加を確認します。',
     ('concierge', 'コンシェルジュ_フォロー一覧'): 'このシートの目的: コンシェルジュが顧客フォローの背景を把握する参照シートです。\n見る順番: 優先度 → 対応状況 → 顧客名 → フォロー理由 → 顧客コメント。\n操作: 原則入力なし。誰が何を見ればよいかを把握するための一覧です。',
     ('concierge', 'コンシェルジュ_データ状況'): 'このシートの目的: コンシェルジュ向け publish の件数異常確認です。\n見る順番: metric → value → note。\n操作: 例外や followup_queue_count の増減を確認します。',
+    ('sato', 'パートナー_担当リード'): 'このシートの目的: 佐藤担当の案件一覧を確認するシートです。\n見る順番: assigned_at → lead_display_name → meeting_status → potex_sale_status → recruitment_status。\n操作: 原則入力なし。更新が必要な案件を洗い出します。',
+    ('sato', 'パートナー_状況入力'): 'このシートの目的: 佐藤担当案件の status を更新する入力シートです。\n操作手順: ① current_* を確認 ② operator_* に新しい状態を入力 ③ 必要ならメモ ④ submit_update を TRUE にして反映待ち。',
+    ('sato', 'パートナー_データ状況'): 'このシートの目的: 佐藤 workbook の件数 / stale 異常確認です。\n見る順番: metric → value → note。\n操作: stale 件数や未更新件数が増えたら担当案件一覧と照合します。',
+    ('inai', 'パートナー_担当リード'): 'このシートの目的: 稲井担当の案件一覧を確認するシートです。\n見る順番: assigned_at → lead_display_name → meeting_status → potex_sale_status → recruitment_status。\n操作: 原則入力なし。更新が必要な案件を洗い出します。',
+    ('inai', 'パートナー_状況入力'): 'このシートの目的: 稲井担当案件の status を更新する入力シートです。\n操作手順: ① current_* を確認 ② operator_* に新しい状態を入力 ③ 必要ならメモ ④ submit_update を TRUE にして反映待ち。',
+    ('inai', 'パートナー_データ状況'): 'このシートの目的: 稲井 workbook の件数 / stale 異常確認です。\n見る順番: metric → value → note。\n操作: stale 件数や未更新件数が増えたら担当案件一覧と照合します。',
 }
 
 COLUMN_NOTES = {
@@ -290,6 +386,28 @@ COLUMN_NOTES = {
         'gap_comment': 'コーチとの認識差や困りごとの補足です。',
         'owner': '主担当や確認すべき担当者の目安です。',
     },
+    ('sato', 'パートナー_担当リード'): {
+        'meeting_status': '面談状況です。none / scheduled / completed などを見ます。',
+        'potex_sale_status': 'POTEX 商品提案状況です。introduced / in_discussion / lost などを見ます。',
+        'recruitment_status': '人材側の進捗です。intern_intro / selection / closed などを見ます。',
+    },
+    ('sato', 'パートナー_状況入力'): {
+        'operator_meeting_status': '推奨語彙: none / scheduled / completed / no_show / cancelled',
+        'operator_potex_sale_status': '推奨語彙: none / introduced / in_discussion / lost',
+        'operator_recruitment_status': '推奨語彙: none / intern_intro / intern_active / selection / closed / lost / unreachable',
+        'submit_update': 'TRUE にすると次回 writeback cadence で反映対象になります。',
+    },
+    ('inai', 'パートナー_担当リード'): {
+        'meeting_status': '面談状況です。none / scheduled / completed などを見ます。',
+        'potex_sale_status': 'POTEX 商品提案状況です。introduced / in_discussion / lost などを見ます。',
+        'recruitment_status': '人材側の進捗です。intern_intro / selection / closed などを見ます。',
+    },
+    ('inai', 'パートナー_状況入力'): {
+        'operator_meeting_status': '推奨語彙: none / scheduled / completed / no_show / cancelled',
+        'operator_potex_sale_status': '推奨語彙: none / introduced / in_discussion / lost',
+        'operator_recruitment_status': '推奨語彙: none / intern_intro / intern_active / selection / closed / lost / unreachable',
+        'submit_update': 'TRUE にすると次回 writeback cadence で反映対象になります。',
+    },
 }
 
 HEADER_GROUPS = {
@@ -312,6 +430,12 @@ HEADER_GROUPS = {
     ('coaches', 'コーチ_データ状況'): {'blue': ['metric'], 'orange': ['value'], 'gray': ['note']},
     ('concierge', 'コンシェルジュ_フォロー一覧'): {'orange': ['priority', 'queue_status'], 'blue': ['feedback_date', 'customer_name', 'current_status'], 'teal': ['assigned_coach_name', 'feedback_coach_name', 'owner'], 'purple': ['followup_reason', 'comment', 'gap_comment']},
     ('concierge', 'コンシェルジュ_データ状況'): {'blue': ['metric'], 'orange': ['value'], 'gray': ['note']},
+    ('sato', 'パートナー_担当リード'): {'blue': ['assigned_at', 'lead_display_name'], 'teal': ['meeting_status', 'potex_sale_status', 'recruitment_status'], 'gray': ['partner_status_note', 'last_partner_update_at', 'current_plan_name', 'current_plan_status']},
+    ('sato', 'パートナー_状況入力'): {'blue': ['assigned_at', 'lead_display_name'], 'gray': ['current_meeting_status', 'current_meeting_done_at', 'current_potex_sale_status', 'current_recruitment_status', 'current_partner_status_note', 'current_plan_name', 'current_plan_status'], 'yellow': ['operator_meeting_status', 'operator_meeting_done_at', 'operator_potex_sale_status', 'operator_recruitment_status', 'operator_partner_status_note', 'submit_update']},
+    ('sato', 'パートナー_データ状況'): {'blue': ['metric'], 'orange': ['value'], 'gray': ['note']},
+    ('inai', 'パートナー_担当リード'): {'blue': ['assigned_at', 'lead_display_name'], 'teal': ['meeting_status', 'potex_sale_status', 'recruitment_status'], 'gray': ['partner_status_note', 'last_partner_update_at', 'current_plan_name', 'current_plan_status']},
+    ('inai', 'パートナー_状況入力'): {'blue': ['assigned_at', 'lead_display_name'], 'gray': ['current_meeting_status', 'current_meeting_done_at', 'current_potex_sale_status', 'current_recruitment_status', 'current_partner_status_note', 'current_plan_name', 'current_plan_status'], 'yellow': ['operator_meeting_status', 'operator_meeting_done_at', 'operator_potex_sale_status', 'operator_recruitment_status', 'operator_partner_status_note', 'submit_update']},
+    ('inai', 'パートナー_データ状況'): {'blue': ['metric'], 'orange': ['value'], 'gray': ['note']},
 }
 
 COLUMN_WIDTHS = {
@@ -333,6 +457,12 @@ COLUMN_WIDTHS = {
     ('coaches', 'コーチ_データ状況'): {'metric': 220, 'value': 90, 'note': 320},
     ('concierge', 'コンシェルジュ_フォロー一覧'): {'priority': 64, 'queue_status': 90, 'feedback_date': 120, 'customer_name': 130, 'current_status': 110, 'assigned_coach_name': 120, 'feedback_coach_name': 120, 'followup_reason': 170, 'comment': 260, 'gap_comment': 260, 'owner': 120},
     ('concierge', 'コンシェルジュ_データ状況'): {'metric': 220, 'value': 90, 'note': 320},
+    ('sato', 'パートナー_担当リード'): {'assigned_at': 120, 'lead_display_name': 150, 'meeting_status': 120, 'potex_sale_status': 130, 'recruitment_status': 140, 'partner_status_note': 220, 'last_partner_update_at': 130, 'current_plan_name': 150, 'current_plan_status': 120},
+    ('sato', 'パートナー_状況入力'): {'assigned_at': 120, 'lead_display_name': 150, 'respondent_email': 190, 'phone': 110, 'age': 70, 'current_meeting_status': 120, 'current_meeting_done_at': 130, 'current_potex_sale_status': 130, 'current_recruitment_status': 140, 'current_partner_status_note': 220, 'current_plan_name': 150, 'current_plan_status': 120, 'operator_meeting_status': 130, 'operator_meeting_done_at': 130, 'operator_potex_sale_status': 140, 'operator_recruitment_status': 150, 'operator_partner_status_note': 220, 'submit_update': 110},
+    ('sato', 'パートナー_データ状況'): {'metric': 220, 'value': 90, 'note': 320},
+    ('inai', 'パートナー_担当リード'): {'assigned_at': 120, 'lead_display_name': 150, 'meeting_status': 120, 'potex_sale_status': 130, 'recruitment_status': 140, 'partner_status_note': 220, 'last_partner_update_at': 130, 'current_plan_name': 150, 'current_plan_status': 120},
+    ('inai', 'パートナー_状況入力'): {'assigned_at': 120, 'lead_display_name': 150, 'respondent_email': 190, 'phone': 110, 'age': 70, 'current_meeting_status': 120, 'current_meeting_done_at': 130, 'current_potex_sale_status': 130, 'current_recruitment_status': 140, 'current_partner_status_note': 220, 'current_plan_name': 150, 'current_plan_status': 120, 'operator_meeting_status': 130, 'operator_meeting_done_at': 130, 'operator_potex_sale_status': 140, 'operator_recruitment_status': 150, 'operator_partner_status_note': 220, 'submit_update': 110},
+    ('inai', 'パートナー_データ状況'): {'metric': 220, 'value': 90, 'note': 320},
 }
 
 WRAP_COLUMNS = {
@@ -349,6 +479,12 @@ WRAP_COLUMNS = {
     ('coaches', 'コーチ_データ状況'): ['note'],
     ('concierge', 'コンシェルジュ_フォロー一覧'): ['followup_reason', 'comment', 'gap_comment'],
     ('concierge', 'コンシェルジュ_データ状況'): ['note'],
+    ('sato', 'パートナー_担当リード'): ['partner_status_note'],
+    ('sato', 'パートナー_状況入力'): ['current_partner_status_note', 'operator_partner_status_note'],
+    ('sato', 'パートナー_データ状況'): ['note'],
+    ('inai', 'パートナー_担当リード'): ['partner_status_note'],
+    ('inai', 'パートナー_状況入力'): ['current_partner_status_note', 'operator_partner_status_note'],
+    ('inai', 'パートナー_データ状況'): ['note'],
 }
 
 DATA_VALIDATIONS = {
@@ -356,6 +492,8 @@ DATA_VALIDATIONS = {
     ('cs', 'CS_担当割当入力'): {'operator_decision_status': ['approved', 'active', 'resolved']},
     ('cs', 'CS_入金名寄せ確認'): {'operator_decision_status': ['approved', 'active', 'resolved']},
     ('cs', 'CS_継続名寄せ確認'): {'operator_decision_status': ['approved', 'active', 'resolved']},
+    ('sato', 'パートナー_状況入力'): {'operator_meeting_status': ['none', 'scheduled', 'completed', 'no_show', 'cancelled'], 'operator_potex_sale_status': ['none', 'introduced', 'in_discussion', 'lost'], 'operator_recruitment_status': ['none', 'intern_intro', 'intern_active', 'selection', 'closed', 'lost', 'unreachable'], 'submit_update': ['TRUE', 'FALSE']},
+    ('inai', 'パートナー_状況入力'): {'operator_meeting_status': ['none', 'scheduled', 'completed', 'no_show', 'cancelled'], 'operator_potex_sale_status': ['none', 'introduced', 'in_discussion', 'lost'], 'operator_recruitment_status': ['none', 'intern_intro', 'intern_active', 'selection', 'closed', 'lost', 'unreachable'], 'submit_update': ['TRUE', 'FALSE']},
 }
 
 
@@ -365,6 +503,8 @@ TAB_ORDER = {
     'sales': ['営業_使い方', '営業_未入金一覧', '営業_契約一覧', '営業_データ状況', '営業_ファネル推移'],
     'coaches': ['コーチ_使い方', 'コーチ_要フォロー一覧', 'コーチ_担当負荷', 'コーチ_データ状況'],
     'concierge': ['コンシェルジュ_使い方', 'コンシェルジュ_フォロー一覧', 'コンシェルジュ_データ状況'],
+    'sato': ['パートナー_使い方', 'パートナー_担当リード', 'パートナー_状況入力', 'パートナー_データ状況'],
+    'inai': ['パートナー_使い方', 'パートナー_担当リード', 'パートナー_状況入力', 'パートナー_データ状況'],
 }
 
 
@@ -509,8 +649,6 @@ def add_generic_signal_rules(reqs: list[dict[str, Any]], sheet_id: int, rows: in
         letter = column_letter(idx)
         add_cf(reqs, [body_grid(sheet_id, rows, idx + 1, 1, idx)], f'=LOWER(${letter}2)="pending"', BGS['orange'])
         add_cf(reqs, [body_grid(sheet_id, rows, idx + 1, 1, idx)], f'=LOWER(${letter}2)="paid"', BGS['green'])
-
-
 def add_cf(reqs: list[dict[str, Any]], ranges: list[dict[str, int]], formula: str, bg: dict[str, float]) -> None:
     reqs.append({
         'addConditionalFormatRule': {
@@ -547,6 +685,8 @@ def apply_baseline_and_signals(api, workbook_key: str) -> None:
     conditional_counts = {s['properties']['title']: len(s.get('conditionalFormats', [])) for s in meta['sheets']}
 
     for title in BASELINE.get(workbook_key, {}):
+        if title not in props:
+            continue
         clear_conditional_rules(api, spreadsheet_id, props[title]['sheetId'], conditional_counts.get(title, 0))
 
     requests: list[dict[str, Any]] = []
@@ -598,6 +738,26 @@ def apply_baseline_and_signals(api, workbook_key: str) -> None:
         elif title == 'コンシェルジュ_データ状況':
             add_cf(requests, [body_grid(p['sheetId'], rows, 2, 1, 1)], '=AND(VALUE($B2)>0,REGEXMATCH($A2,"(_unmatched_count|_exception_count)$"))', BGS['red'])
             add_cf(requests, [body_grid(p['sheetId'], rows, 2, 1, 1)], '=AND(VALUE($B2)>0,REGEXMATCH($A2,"followup_queue_count$"))', BGS['orange'])
+        elif title == 'パートナー_担当リード':
+            if 'meeting_status' in header:
+                meeting_idx = header.index('meeting_status')
+                meeting_letter = column_letter(meeting_idx)
+                add_cf(requests, [body_grid(p['sheetId'], rows, cols)], f'=AND(COUNTA($A2:$Z2)>0,${meeting_letter}2="")', BGS['red'])
+                add_cf(requests, [body_grid(p['sheetId'], rows, cols)], f'=LOWER(${meeting_letter}2)="completed"', BGS['green'])
+            if 'potex_sale_status' in header and 'recruitment_status' in header:
+                sale_idx = header.index('potex_sale_status')
+                sale_letter = column_letter(sale_idx)
+                recruitment_idx = header.index('recruitment_status')
+                recruitment_letter = column_letter(recruitment_idx)
+                add_cf(requests, [body_grid(p['sheetId'], rows, cols)], f'=OR(LOWER(${sale_letter}2)="introduced",LOWER(${sale_letter}2)="in_discussion",LOWER(${recruitment_letter}2)="selection")', BGS['orange'])
+        elif title == 'パートナー_状況入力':
+            if 'submit_update' in header:
+                submit_idx = header.index('submit_update')
+                submit_letter = column_letter(submit_idx)
+                add_cf(requests, [body_grid(p['sheetId'], rows, cols)], f'=LOWER(${submit_letter}2)="true"', BGS['orange'])
+        elif title == 'パートナー_データ状況':
+            add_cf(requests, [body_grid(p['sheetId'], rows, 2, 1, 1)], '=AND(VALUE($B2)>0,REGEXMATCH($A2,"(stale|waiting|unupdated)"))', BGS['red'])
+            add_cf(requests, [body_grid(p['sheetId'], rows, 2, 1, 1)], '=AND(VALUE($B2)>0,REGEXMATCH($A2,"(meeting_completed_count|potex_in_progress_count|recruitment_active_count)$"))', BGS['green'])
         elif title == 'Sync_Log':
             add_cf(requests, [body_grid(p['sheetId'], rows, 3, 1, 2)], '=LOWER($C2)="success"', BGS['green'])
             add_cf(requests, [body_grid(p['sheetId'], rows, 3, 1, 2)], '=REGEXMATCH(LOWER($C2),"error|fail")', BGS['red'])
@@ -615,14 +775,19 @@ def apply_baseline_and_signals(api, workbook_key: str) -> None:
     if requests:
         api.batchUpdate(spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
 
-def apply_readmes_and_hides(api) -> None:
+def apply_readmes_and_hides(api, scopes: list[str] | None = None) -> None:
+    target_scopes = scopes or active_scopes()
     by_workbook: dict[str, list[tuple[str, list[list[str]]]]] = {}
     for (workbook_key, sheet_name), values in README_VALUES.items():
+        if workbook_key not in target_scopes:
+            continue
         merged_values = values + README_EXTRA_ROWS.get((workbook_key, sheet_name), [])
         by_workbook.setdefault(workbook_key, []).append((sheet_name, merged_values))
 
     for workbook_key, items in by_workbook.items():
-        sid = WORKBOOKS[workbook_key]
+        sid = WORKBOOKS.get(workbook_key)
+        if not sid:
+            continue
         data = [
             {
                 'range': f'{sheet_name}!A1:B{len(values)}',
@@ -638,7 +803,10 @@ def apply_readmes_and_hides(api) -> None:
             },
         ).execute()
 
-    for workbook_key, sid in WORKBOOKS.items():
+    for workbook_key in target_scopes:
+        sid = WORKBOOKS.get(workbook_key)
+        if not sid:
+            continue
         meta = api.get(spreadsheetId=sid, fields='sheets(properties(sheetId,title,gridProperties(rowCount)))').execute()
         props = {s['properties']['title']: s['properties'] for s in meta['sheets']}
         for (wk, title), cols in HIDE_COLUMNS.items():
@@ -768,26 +936,33 @@ def apply_protections_and_header_notes(api, workbook_key: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Reapply Potex workbook UX formatting')
-    parser.add_argument('--scope', choices=['all', 'cs', 'exec', 'sales', 'coaches', 'concierge', 'db'], default='all')
+    parser.add_argument('--scope', choices=['all', 'cs', 'exec', 'sales', 'coaches', 'concierge', 'sato', 'inai', 'db'], default='all')
     parser.add_argument('--readmes-only', action='store_true')
+    parser.add_argument('--sato-id', default='', help='Override Potex Sato spreadsheet ID when not stored in generated/phase1_script_properties.json or POTEX_SATO_SPREADSHEET_ID')
+    parser.add_argument('--inai-id', default='', help='Override Potex Inai spreadsheet ID when not stored in generated/phase1_script_properties.json or POTEX_INAI_SPREADSHEET_ID')
     args = parser.parse_args()
+
+    global WORKBOOKS
+    WORKBOOKS = resolve_workbooks(cli_sato_id=args.sato_id, cli_inai_id=args.inai_id)
 
     service = get_service()
     api = service.spreadsheets()
 
     if args.readmes_only:
-        apply_readmes_and_hides(api)
-        for scope in ['cs', 'exec', 'sales', 'coaches', 'concierge', 'db']:
+        readme_scopes = active_scopes()
+        apply_readmes_and_hides(api, readme_scopes)
+        for scope in readme_scopes:
             apply_protections_and_header_notes(api, scope)
-        for scope in ['cs', 'exec', 'sales', 'coaches', 'concierge']:
+        for scope in [s for s in readme_scopes if s in TAB_ORDER]:
             apply_tab_order(api, scope)
         print('Applied README + hidden helper columns + protections + tab order.')
         return
 
-    scopes = ['cs', 'exec', 'sales', 'coaches', 'concierge', 'db'] if args.scope == 'all' else [args.scope]
+    scopes = [s for s in active_scopes() if s != 'db'] + (['db'] if WORKBOOKS.get('db') else []) if args.scope == 'all' else [args.scope]
+    scopes = [scope for scope in scopes if WORKBOOKS.get(scope)]
     for scope in scopes:
         apply_baseline_and_signals(api, scope)
-    apply_readmes_and_hides(api)
+    apply_readmes_and_hides(api, scopes)
     for scope in scopes:
         apply_protections_and_header_notes(api, scope)
     for scope in [s for s in scopes if s in TAB_ORDER]:

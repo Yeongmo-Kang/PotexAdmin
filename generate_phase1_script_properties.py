@@ -21,8 +21,21 @@ DEFAULTS = {
 }
 
 
+def load_existing_props() -> dict[str, str]:
+    if not OUT_PATH.exists():
+        return {}
+    try:
+        data = json.loads(OUT_PATH.read_text())
+        if isinstance(data, dict):
+            return {str(k): str(v) for k, v in data.items()}
+    except Exception:
+        return {}
+    return {}
+
+
 def main() -> None:
     ids = json.loads(IDS_PATH.read_text())
+    existing = load_existing_props()
     props = {
         'DB_SPREADSHEET_ID': ids['db']['spreadsheet_id'],
         'CS_SPREADSHEET_ID': ids['cs']['spreadsheet_id'],
@@ -30,6 +43,8 @@ def main() -> None:
         'EXEC_SPREADSHEET_ID': ids['executive']['spreadsheet_id'],
         'SALES_SPREADSHEET_ID': ids.get('sales', {}).get('spreadsheet_id', ''),
         'COACHES_SPREADSHEET_ID': ids.get('coaches', {}).get('spreadsheet_id', ''),
+        'SATO_SPREADSHEET_ID': ids.get('sato', {}).get('spreadsheet_id', existing.get('SATO_SPREADSHEET_ID', '')),
+        'INAI_SPREADSHEET_ID': ids.get('inai', {}).get('spreadsheet_id', existing.get('INAI_SPREADSHEET_ID', '')),
         **DEFAULTS,
     }
     OUT_PATH.parent.mkdir(exist_ok=True)
