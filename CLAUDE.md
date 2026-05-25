@@ -7,7 +7,7 @@
   1. **集計表示**: DB を参照する read-only の要約表示
   2. **絞り込みビュー**: 特定ユーザーと必要な列だけを表示
   3. **トリガー入力**: operator の入力を writeback collection で DB に反映
-- **publish シートへ手入力しない。** 入力は明示された input タブ (`CS_別名解決入力`, `CS_更新アクション`) のみで行う。
+- **publish シートへ手入力しない。** 入力は明示された input タブ (`CS_別名解決入力`, `CS_担当割当入力`, `CS_更新アクション`, `パートナー_状況入力`) のみで行う。
 
 ## Workbook map
 | 役割 | 名前 | spreadsheet_id |
@@ -16,6 +16,10 @@
 | CS 運用 | `Potex CS` | `1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg` |
 | Executive モニタリング | `Potex Executive` | `1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY` |
 | Concierge read-only | `Potex Concierge` | `1c-Ie03M619iMqhwqV1jHPSYDVPTMHPPKs6zhSr8QPr8` |
+| Sales read-only | `Potex Sales` | `1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao` |
+| Coaches read-only | `Potex Coaches` | `19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc` |
+| Partner status input | `Potex Sato` | auto-provisioned / script property (`SATO_SPREADSHEET_ID`) |
+| Partner status input | `Potex Inai` | auto-provisioned / script property (`INAI_SPREADSHEET_ID`) |
 
 ## Source workbooks（編集禁止・定着後に廃止予定）
 新しいシート構成が定着したら利用を止める予定だが、現時点では業務フロー確認用の reference 兼、短期 ingest source である。**read-only で扱う。**
@@ -27,7 +31,7 @@
 | `月次振り返りアンケート（回答）` | `1hl2JVJ_DSvjtk8axnZWJ8TTwOIMECfkREg7rN6tbDH8` | feedback Form 応答 |
 | `⭕️使用中｜POTEX数値管理` | `1arXU3lqzY8c7-mYY7CnDlxEpr5ar68Q2m4h4HEwLYC8` | 売上 / 体験 / 実需 + `LStep` CSV import の中継 (`csvA`/`csv_potex`) |
 
-原本シートで禁止すること:
+source / reference workbook で禁止すること:
 - 構造変更 / タブ削除 / 手作業の整理 / GAS write
 - alias 問題を source 側の命名変更で解決すること
 - 「確信のない名前マッチ」を alias map に `approved` で入れること

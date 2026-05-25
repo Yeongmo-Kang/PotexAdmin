@@ -12,13 +12,15 @@
 
 ## 現在の到達点
 - Phase 1 cutover は完了済み
-- live workbook は 6 系統で稼働中
+- live workbook は 8 系統で稼働中
   - `POTEX DB`
   - `Potex CS`
   - `Potex Executive`
   - `Potex Concierge`
   - `Potex Sales`
   - `Potex Coaches`
+  - `Potex Sato`
+  - `Potex Inai`
 - trigger cadence は稼働中
   - publish: 1時間ごと
   - writeback: 30分ごと

@@ -1,10 +1,10 @@
 # Potex Phase 1 Cutover Runbook
 
-> **Status (2026-05-19):** Cutover は完了済み。全 6 publish targets (`POTEX DB` / `Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) は live で、Apps Script trigger automation も稼働中。この文書は、今後の workbook（例: partner pipeline view）向けの setup / cutover 参考資料として残す。
+> **Status (2026-05-19):** Cutover は完了済み。全 8 workbook (`POTEX DB` / `Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches` / `Potex Sato` / `Potex Inai`) は live で、Apps Script trigger automation も稼働中。この文書は、今後の workbook 追加や再provision向けの setup / cutover 参考資料として残す。
 
 ## 1. Architecture
 - `POTEX DB` が canonical data hub。source workbooks は read-only のまま使う。
-- role workbooks (`Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches`) は publish target 専用。
+- role workbooks (`Potex CS` / `Potex Executive` / `Potex Concierge` / `Potex Sales` / `Potex Coaches` / `Potex Sato` / `Potex Inai`) は publish target 専用。
 - Apps Script project `Potex Automation Hub`（`y.kang@potex.jp` 配下）が canonical refresh → publish → writeback を動かす。
 
 ## 2. 新しい workbook を追加する手順
@@ -28,6 +28,8 @@
 - 人の入力は writeback input tabs のみを通す:
   - `CS_別名解決入力` (alias decisions)
   - `CS_更新アクション` (other operator actions)
+  - `CS_担当割当入力` (assignment decisions)
+  - `パートナー_状況入力` (partner status updates in `Potex Sato` / `Potex Inai`)
 
 ## 5. Alias resolution loop
 1. `runPublishAll()` が未解決 alias を `CS_別名解決入力` に publish する。

@@ -79,7 +79,7 @@ form の構造は時期によって変わっている可能性がある。
 ## 以前の推奨 next steps の状態
 元の推奨 4 項目は、すべて出荷済み。
 
-1. **Customer alias resolution via GAS** — DONE. `CS_別名解決入力` → `Customer_Alias_Map` writeback は live。さらに同じ方式を `CS_入金名寄せ確認` (`source=cs_payment_alias_review`) と `CS_継続名寄せ確認` (`source=cs_continuation_alias_review`) に拡張済み。`runWritebackCollection` は `refreshCanonicalStaging` + 5-workbook republish を自動で連結する (`potex-gas/src/main.ts:38-56`)。
+1. **Customer alias resolution via GAS** — DONE. `CS_別名解決入力` → `Customer_Alias_Map` writeback は live。さらに同じ方式を `CS_入金名寄せ確認` (`source=cs_payment_alias_review`) と `CS_継続名寄せ確認` (`source=cs_continuation_alias_review`) に拡張済み。`runWritebackCollection` は `refreshCanonicalStaging` + 7-workbook republish (CS / Executive / Concierge / Sales / Coaches / Sato / Inai) を自動で連結する (`potex-gas/src/main.ts:38-56`)。
 
 2. **Canonical `Plans` / `Payments`** — DONE. Live counts: `Plans=228`, `Payments=136`, `Staging_Payments=136`, `ConversionHistory=543+`。continuation ingest は alias-aware matching を使う。
 

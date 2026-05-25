@@ -24,6 +24,8 @@
 - `Potex Concierge`：コンシェルジュ向け read-only workbook
 - `Potex Sales`：営業向け read-only workbook
 - `Potex Coaches`：コーチ向け read-only workbook
+- `Potex Sato`：partner 向け status input workbook
+- `Potex Inai`：partner 向け status input workbook
 
 ## 新しく入る人向けの読む順番
 1. `CLAUDE.md` — プロジェクト前提・制約・現状メモ

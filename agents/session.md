@@ -1,6 +1,6 @@
 # Potex セッションチェックポイント
 
-更新: 2026-05-25T09:18:30+09:00
+更新: 2026-05-25T09:45:00+09:00
 
 ## いまの前提
 - GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`) を文書・コード・計画の一次基準にする
@@ -31,7 +31,7 @@
 
 ## 2026-05-25 時点の実態整理
 ### 稼働中のもの
-- live workbook 6 系統は稼働中
+- live workbook 8 系統は稼働中
 - trigger cadence は継続稼働中
   - publish: 1時間ごと
   - writeback: 30分ごと

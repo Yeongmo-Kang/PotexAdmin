@@ -4,7 +4,7 @@
 
 ## 目的
 - canonical DB workbook を 1 つの hub として使う
-- `Potex CS` / `Potex Concierge` / `Potex Sales` / `Potex Coaches` / `Potex Executive` に publish する
+- `Potex CS` / `Potex Concierge` / `Potex Sales` / `Potex Coaches` / `Potex Executive` / `Potex Sato` / `Potex Inai` に publish する
 - operator が入力した writeback 内容を再び DB に戻す
 
 ## 推奨実行アカウント
@@ -38,6 +38,8 @@ npm run deploy
 - `SALES_SPREADSHEET_ID`
 - `COACHES_SPREADSHEET_ID`
 - `EXEC_SPREADSHEET_ID`
+- `INAI_SPREADSHEET_ID`
+- `SATO_SPREADSHEET_ID`
 - `ENABLE_CONCIERGE`
 - `ENABLE_SALES`
 - `ENABLE_COACHES`
@@ -65,6 +67,13 @@ npm run deploy
 - `営業_未入金一覧`：未入金キューを表示
 - `営業_ファネル推移`：`ConversionHistory` を元に funnel event を表示
 - `営業_データ状況`：payments / plans / conversion / unmatched count を要約
+
+
+## 現在含まれる partner publish / writeback フロー
+- `runPublishAll()` / `runFullRefresh()` / `runWritebackCollection()` は `Potex Sato` / `Potex Inai` の partner workbook も更新する
+- `パートナー_担当リード`：partner ごとの active assignment 一覧
+- `パートナー_状況入力`：meeting / sale / recruitment status を partner が入力する writeback タブ
+- `パートナー_データ状況`：assignment count / freshness / stale status の要約
 
 ## 現在含まれる source → canonical feedback フロー
 - `runCanonicalRefresh()` が `Feedback`、`Exceptions_FeedbackMatch`、`Line_Registrations` を再構成する

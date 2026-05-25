@@ -1,12 +1,12 @@
 # Potex データベース概要
 
 ## 1. この文書の目的
-この文書は、Potex データベースが **どの workbook で構成されているか**、**どこが原本でどこが運用用か**、**どのシートを残し、どのシートを削除したか** を素早く理解するための基準文書です。
+この文書は、Potex データベースが **どの workbook で構成されているか**、**どこが source / reference でどこが運用用か**、**どのシートを残し、どのシートを削除したか** を素早く理解するための基準文書です。
 
 この文書を先に読むと、次の点をまとめて把握できます。
-- 修正してはいけない原本シートが何か
+- 日常運用で直接編集しない source / reference workbook が何か
 - なぜ `POTEX DB` が中心ハブなのか
-- `Potex CS`、`Potex Executive`、`Potex Concierge`、`Potex Sales`、`Potex Coaches` が何を見るための workbook か
+- `Potex CS`、`Potex Executive`、`Potex Concierge`、`Potex Sales`、`Potex Coaches`、`Potex Sato`、`Potex Inai` が何を見るための workbook か
 - 現在 live の運用対象シートが何か
 
 ---
@@ -14,14 +14,14 @@
 ## 2. 一言で言うと
 Potex のデータ構造は、次の原則で運用します。
 
-1. **原本（Source）spreadsheet は読み取り専用である。**
+1. **source / reference spreadsheet は日常運用の編集対象ではなく、読み取り専用で扱う。**
 2. **`POTEX DB` だけが canonical database の役割を持つ。**
-3. **運用担当者は DB ではなく役割別 workbook（`Potex CS`、`Potex Executive`、`Potex Concierge`、`Potex Sales`、`Potex Coaches`）を見る。**
+3. **運用担当者は DB ではなく役割別 workbook（`Potex CS`、`Potex Executive`、`Potex Concierge`、`Potex Sales`、`Potex Coaches`、`Potex Sato`、`Potex Inai`）を見る。**
 4. **人の入力は publish シートではなく、専用の input / writeback シートでのみ行う。**
 
 ---
 
-## 3. 修正禁止対象: 現在運用中の原本シート
+## 3. 修正禁止対象: 現在運用中の source / reference workbook
 以下のシートは **現在運用中の実運用 source** のため、修正 / 削除は禁止です。
 
 ### Upstream operational systems
@@ -114,6 +114,15 @@ Potex のデータ構造は、次の原則で運用します。
 - 要フォロー顧客確認
 - コーチ観点でのデータ状態確認
 
+### 4.7 `Potex Sato` / `Potex Inai`
+役割:
+- partner ごとの担当 lead / customer 進捗を確認し、status update を writeback する workbook
+
+この workbook で行うこと:
+- `パートナー_担当リード` で現在担当案件を確認する
+- `パートナー_状況入力` で meeting / sale / recruitment status を更新する
+- `パートナー_データ状況` で freshness と件数異常を確認する
+
 ---
 
 ## 5. 現在 live のシート構成
@@ -159,6 +168,7 @@ Potex のデータ構造は、次の原則で運用します。
 
 ### `Potex CS`
 - `CS_使い方`
+- `CS_承認診断`
 - `CS_承認進捗`
 - `CS_入金名寄せ確認`
 - `CS_継続名寄せ確認`
@@ -171,6 +181,8 @@ Potex のデータ構造は、次の原則で運用します。
 
 ### `Potex Executive`
 - `経営_使い方`
+- `経営_会議前チェック`
+- `経営_更新状況`
 - `経営_データ状況`
 - `経営_例外推移`
 - `経営_顧客リスク`
@@ -193,6 +205,12 @@ Potex のデータ構造は、次の原則で運用します。
 - `コーチ_要フォロー一覧`
 - `コーチ_担当負荷`
 - `コーチ_データ状況`
+
+### `Potex Sato` / `Potex Inai`
+- `パートナー_使い方`
+- `パートナー_担当リード`
+- `パートナー_状況入力`
+- `パートナー_データ状況`
 
 ---
 
@@ -229,7 +247,7 @@ Potex のデータ構造は、次の原則で運用します。
 
 ### 禁止事項
 - 運用 workbook から canonical row を直接修正する
-- source workbook を直接整理して問題を解決する
+- source / reference workbook を直接整理して問題を解決する
 - publish シートへ手入力する
 
 ---
@@ -250,8 +268,8 @@ Potex のデータ構造は、次の原則で運用します。
 ---
 
 ## 9. 運用担当者への最重要メッセージ
-- 原本シートは触らない
+- source / reference workbook は日常運用で触らない
 - DB は直接の運用画面ではない
-- 日常作業は役割別 workbook（CS / Executive / Concierge / Sales / Coaches）で行う
+- 日常作業は役割別 workbook（CS / Executive / Concierge / Sales / Coaches / Sato / Inai）で行う
 - publish タブは読み取り専用
 - 人が入力してよいのは `CS_別名解決入力` のような input タブだけ

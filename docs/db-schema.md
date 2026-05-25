@@ -5,7 +5,7 @@
 ## この文書で分かること
 「`POTEX DB` の中にどの表があり、各表が何を意味し、どのカラムを持つのか」を説明します。
 
-運用チームが日常的に見るのは 5 つの publish workbook（`Potex CS` / `Executive` / `Concierge` / `Sales` / `Coaches`）です。これらの workbook はすべて、この DB の表を読んで構築されます。**DB は会社の単一の事実原本（canonical）です。**
+運用チームが日常的に見るのは 7 つの role workbook（`Potex CS` / `Executive` / `Concierge` / `Sales` / `Coaches` / `Sato` / `Inai`）です。これらの workbook はすべて、この DB の表を読んで構築されます。**DB は会社の単一の事実原本（canonical）です。**
 
 ## 共通ルール
 - **すべての表は末尾に `created_at`、`updated_at` の 2 カラムを持つ。**

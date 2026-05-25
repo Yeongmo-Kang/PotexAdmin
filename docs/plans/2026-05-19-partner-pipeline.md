@@ -174,7 +174,7 @@ writeback collection（30 分間隔）がこれを取り込み、常に **拡張
 1. 30 分 writeback trigger → `collectCsWritebackRows`
 2. `approve` の場合、拡張済み `Customer_Coach_Assignments` を upsert し、必要なら `Coach_Alias_Map` を更新
 3. `Customer_Alias_Map` と同様に assignment source を記録
-4. canonical refresh → publish all（5-workbook）
+4. canonical refresh → publish all（current live flow: 7-workbook republish to CS / Executive / Concierge / Sales / Coaches / Sato / Inai）
 
 `*_Status_Input`（partner workbook）の処理（新規 writeback path）:
 1. 30 分 writeback trigger → 新規 `collectPartnerStatusWritebackRows`

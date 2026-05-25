@@ -9,9 +9,9 @@
 
 ## 2. 最初に覚える 5 つの原則
 
-1. **原本シートは修正しない。**
+1. **日常運用は役割別 workbook で行い、source / reference workbook は編集対象として扱わない。**
 2. **`POTEX DB` は運用担当者が日常的に直接編集する画面ではない。**
-3. **日常運用は `Potex CS`、`Potex Executive`、`Potex Concierge` で行う。**
+3. **日常運用は `Potex CS`、`Potex Executive`、`Potex Concierge`、`Potex Sales`、`Potex Coaches`、`Potex Sato`、`Potex Inai` で行う。**
 4. **publish シートは読み取り専用である。**
 5. **人が入力してよいのは input / writeback シートだけである。**
 
@@ -19,8 +19,8 @@
 
 ## 3. どこを見ればよいか
 
-### 3.1 原本シートと upstream の流れ
-次のシートは **閲覧のみ** とし、修正しません。
+### 3.1 upstream / reference の位置づけ
+次の workbook / シートは **日常運用の編集画面ではありません**。
 - `受講者管理`
 - `顧客満足度会議`
 - `月次振り返りアンケート （回答）`
@@ -36,15 +36,17 @@
 6. CSV を spreadsheet に手動 import する。
 7. GAS がそのデータを読み取り、ダッシュボード / 運用 workbook を更新する。
 
-そのため、source spreadsheet は現在 ingest の経由地点ですが、長期的には `LStep` export / API または Slack → `LStep` の業務フローに直接つなげられる構成を前提とします。
+そのため、spreadsheet source は現在 ingest の経由地点ですが、長期的には `LStep` export / API または Slack → `LStep` の業務フローに直接つなげられる構成を前提とします。
 
 ### 3.2 実際に使う運用 workbook
 #### `Potex CS`
 CS 担当者が主に確認する workbook
+- `CS_使い方`
 - `CS_要フォロー一覧`
 - `CS_継続対象一覧`
 - `CS_例外確認`
 - `CS_別名解決入力`
+- `CS_担当割当入力`
 - `CS_承認診断`
 - `CS_承認進捗`
 - `CS_入金名寄せ確認`
@@ -53,6 +55,7 @@ CS 担当者が主に確認する workbook
 
 #### `Potex Executive`
 運用リーダー / マネージャーが確認する workbook
+- `経営_使い方`
 - `経営_会議前チェック`
 - `経営_更新状況`
 - `経営_コーチ負荷`
@@ -66,6 +69,28 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - `コンシェルジュ_フォロー一覧`
 - `コンシェルジュ_データ状況`
 
+#### `Potex Sales`
+営業が契約 / 未入金 / ファネル進捗を確認する workbook
+- `営業_使い方`
+- `営業_契約一覧`
+- `営業_未入金一覧`
+- `営業_ファネル推移`
+- `営業_データ状況`
+
+#### `Potex Coaches`
+コーチが担当負荷と要フォロー対象を確認する workbook
+- `コーチ_使い方`
+- `コーチ_担当負荷`
+- `コーチ_要フォロー一覧`
+- `コーチ_データ状況`
+
+#### `Potex Sato` / `Potex Inai`
+パートナー担当者が自分の lead 状況と更新入力を扱う workbook
+- `パートナー_使い方`
+- `パートナー_担当リード`
+- `パートナー_状況入力`
+- `パートナー_データ状況`
+
 ### 3.3 DB workbook
 #### `POTEX DB`
 - canonical database
@@ -77,14 +102,16 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 1. `CS_承認診断`
 2. `CS_承認進捗`
 3. `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の該当 P1
-4. `CS_要フォロー一覧`
-5. `CS_継続対象一覧`
+4. `CS_担当割当入力`
+5. `CS_要フォロー一覧`
+6. `CS_継続対象一覧`
 
 #### 管理者 / 自動化担当
 1. `経営_会議前チェック`
 2. `経営_更新状況`
-3. 必要なら `POTEX DB > Sync_Log`
-4. CLI が使える場合は read-only inspect script
+3. `営業_データ状況` / `コーチ_データ状況` も必要に応じて確認
+4. 必要なら `POTEX DB > Sync_Log`
+5. CLI が使える場合は read-only inspect script
    - `python inspect_post_refresh_state.py`
    - `python inspect_approval_queue_state.py`
 
@@ -148,6 +175,30 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 注意:
 - このシートでシステムが実際に反映する状態値は `approved` / `active` / `resolved` 系のみです。
 - 判断を保留するときは status を無理に入れず、空欄のままにします。
+
+### `CS_担当割当入力`
+何を見るか:
+- 新規 lead / 顧客に対して、担当者の初期割当または再割当が必要な案件
+- `suggested_assignee_name`、`current_assignee_name`、`assignee_type` を見て、誰に持たせるべきかを判断する input タブ
+
+運用担当者が行うこと:
+- `priority` の高い行から確認する
+- `lead_display_name`、`respondent_email`、`phone`、`age`、`customer_name` を見て対象者を特定する
+- 提案どおりでよければ `operator_decision_status` を入れる
+- 別の担当者にしたい場合のみ `operator_selected_assignee_name` を入力する
+- 判断根拠や申し送りがあれば `assignment_note` を残す
+
+修正可能なカラム:
+- `operator_decision_status`
+- `operator_selected_assignee_name`
+- `assignment_note`
+
+修正してはいけないもの:
+- `suggested_assignee_*`、`current_assignee_*`、lead/customer 特定用の publish カラム
+
+注意:
+- `sync_status` / `last_collected_at` は writeback 側の状態表示なので手入力しない
+- 担当者名は workbook 内の表記に合わせ、曖昧な略称ではなく実運用上の正式表記で入力する
 
 ### `CS_承認診断`
 何を見るか:
@@ -255,6 +306,131 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - 承認後、次の refresh + republish で row が queue から消えれば正常です。
 - タブ自体がない場合は、まず publish / runtime 経路を確認してください（`inspect_post_refresh_state.py` verdict の `cs_continuation_alias_review_present` が `true` である必要があります）。
 
+
+### `営業_契約一覧`
+何を見るか:
+- 契約済み / 着金済み案件の一覧
+- `contract_date`、`paid_date`、`payment_status`、`sales_owner_name`、`assigned_coach_name` をまとめて確認する営業向けビュー
+
+運用担当者が行うこと:
+- 契約状況と customer / coach の接続に不自然な点がないか確認する
+- `source_sheet` / `source_row` を見て upstream の元行を追える状態か確認する
+
+修正してよいか:
+- 原則として不可
+
+### `営業_未入金一覧`
+何を見るか:
+- 契約後まだ着金確認できていない案件
+- 優先度付きの未入金フォロー対象
+
+運用担当者が行うこと:
+- `priority` の高い案件から確認する
+- `contract_date`、`amount`、`sales_owner_name` を見て follow-up 順を決める
+
+修正してよいか:
+- 原則として不可
+
+### `営業_ファネル推移`
+何を見るか:
+- 顧客ごとのファネルイベント推移
+- `event_type`、`changed_by`、`note` を見て営業進捗を追うビュー
+
+運用担当者が行うこと:
+- 最新イベントが想定どおりに反映されているか確認する
+- 案件停滞や重複更新の兆候がないか確認する
+
+修正してよいか:
+- 原則として不可
+
+### `営業_データ状況`
+何を見るか:
+- Sales workbook 側の件数と freshness の sanity check
+- contracts / pending payments / funnel 系の数値が publish 後に妥当かを見る health タブ
+
+運用担当者が行うこと:
+- 件数の急減や 0 件化がないか確認する
+- 契約一覧 / 未入金一覧の見え方と整合しているか確認する
+
+修正してよいか:
+- 不可
+
+### `コーチ_担当負荷`
+何を見るか:
+- 自分または各コーチの担当顧客数 / 負荷状況
+- active customer、follow-up customer、remaining capacity のバランス
+
+運用担当者が行うこと:
+- 負荷偏りや follow-up 集中が起きていないか確認する
+
+修正してよいか:
+- 不可
+
+### `コーチ_要フォロー一覧`
+何を見るか:
+- コーチ視点で見た follow-up 必要顧客
+- `CS_要フォロー一覧` の coach-oriented subset / mirror
+
+運用担当者が行うこと:
+- 自分が持つべき follow-up を確認する
+- CS 側の見え方と大きくズレていないか確認する
+
+修正してよいか:
+- 原則として不可
+
+### `コーチ_データ状況`
+何を見るか:
+- Coaches workbook 側の件数 / freshness / publish 正常性
+
+運用担当者が行うこと:
+- follow-up や load 件数が不自然に 0 になっていないか確認する
+
+修正してよいか:
+- 不可
+
+### `パートナー_担当リード`
+何を見るか:
+- パートナー別に現在担当している lead / customer 一覧
+- `assigned_at`、`current_meeting_status`、`current_potex_sale_status`、`current_recruitment_status` をまとめて確認する一覧
+
+運用担当者が行うこと:
+- 自分が持つ案件の進捗を確認する
+- 状況更新が必要な lead を洗い出す
+
+修正してよいか:
+- 原則として不可
+
+### `パートナー_状況入力`
+何を見るか:
+- パートナーが meeting / sale / recruitment 状況を更新する input タブ
+
+運用担当者が行うこと:
+- `operator_meeting_status`
+- `operator_meeting_done_at`
+- `operator_potex_sale_status`
+- `operator_recruitment_status`
+- `operator_partner_status_note`
+- `submit_update`
+  のみを入力・更新する
+
+修正してはいけないもの:
+- `lead_id`、`customer_id`、`coach_id`、`sync_status`、`last_collected_at` など system 管理カラム
+
+注意:
+- `submit_update` を含め、反映対象は入力後の writeback cadence に従って同期される
+- 他の publish カラムは上書きしない
+
+### `パートナー_データ状況`
+何を見るか:
+- 各 partner workbook の件数 / freshness / publish 正常性
+
+運用担当者が行うこと:
+- 担当 lead 件数が急減していないか確認する
+- `パートナー_担当リード` / `パートナー_状況入力` の件数感と整合しているか確認する
+
+修正してよいか:
+- 不可
+
 ### `経営_会議前チェック`
 何を見るか:
 - 今日の経営会議を **そのまま進めてよいか** を素早く判断するタブ
@@ -360,7 +536,7 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - 不可。append-only ログ。
 
 ### `Staging_Customers` raw ingest の見方に関する注意
-運用担当者が直接使うシートではありませんが、現在 `SOURCE_CUSTOMERS_WORKBOOK_ID` は設定済みで、`顧客管理` 原本を基準に staging の並びが検証済みです。
+運用担当者が直接使うシートではありませんが、現在 `SOURCE_CUSTOMERS_WORKBOOK_ID` は設定済みで、`顧客管理` の live source rows を基準に staging の並びが検証済みです。
 
 意味:
 - raw source の総行数と staging 行数は一致しないことがある
@@ -416,6 +592,19 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - `コンシェルジュ_フォロー一覧` の行数が CS follow-up queue と大きくずれていないか
 - この workbook が読み取り専用であることを再確認したか
 
+### Step 7. `Potex Sales` / `Potex Coaches` を使う担当者は各 data health を確認
+確認ポイント:
+- `営業_データ状況` で contract / payment / funnel 件数が急減していないか
+- `営業_未入金一覧` に未処理の重要案件が溜まっていないか
+- `コーチ_データ状況` で follow-up / load 件数が不自然に 0 になっていないか
+- `コーチ_要フォロー一覧` と `CS_要フォロー一覧` の見え方に大きなズレがないか
+
+### Step 8. `Potex Sato` / `Potex Inai` を使う担当者は partner workbook を確認
+確認ポイント:
+- `パートナー_担当リード` で自分の担当案件が正しく見えているか
+- `パートナー_状況入力` で更新待ち案件が溜まっていないか
+- `パートナー_データ状況` で件数や freshness に異常がないか
+
 ---
 
 ## 6. Alias 問題の処理方法
@@ -454,7 +643,7 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 運用担当者が status に `approved` などを入力した後は、追加操作なしでシステムが次の cadence で処理します。
 1. **writeback collection（30 分ごと）**: operator 入力を読み取り、`Customer_Alias_Map` に `source=cs_payment_alias_review` または `source=cs_continuation_alias_review` として alias 行を追加 / 更新する。
 2. **canonical refresh**: `Staging_Customers` / `Staging_Payments` などを alias-aware に再マッチし、canonical シートを更新する。
-3. **5-workbook republish**: `POTEX DB` → CS / Executive / Concierge / Sales へ再 publish する。対象 row は review queue から消え、マッチ済み件数は health metric に反映される。
+3. **7-workbook republish**: `POTEX DB` → CS / Executive / Concierge / Sales / Coaches / Sato / Inai へ再 publish する。対象 row は review queue から消え、マッチ済み件数は health metric に反映される。
 4. **full refresh（毎日 07:00 JST）**: 上記フロー全体を日次で再実行する。
 
 operator が直接 GAS 関数を実行する必要はありません。すぐ反映を確認したい場合のみ、管理者が Apps Script UI から `runWritebackCollect` → `runFullRefresh` を手動実行できます。
@@ -480,12 +669,12 @@ operator が直接 GAS 関数を実行する必要はありません。すぐ反
 
 ### `経営_データ状況` を確認
 - row count が極端に減っていないか
-- source ingest 失敗と思われる異常がないか
+- upstream ingest 失敗と思われる異常がないか
 
 ---
 
 ## 8. やってはいけないこと
-- source workbook を直接修正する
+- source / reference workbook を日常運用の入力画面として使う
 - `POTEX DB` の canonical シートを日常運用画面のように使う
 - publish シートに手入力する
 - alias 問題を DB 上で直接修正する
@@ -509,4 +698,4 @@ operator が直接 GAS 関数を実行する必要はありません。すぐ反
 ---
 
 ## 10. 最重要の運用原則
-**原本は触らず、運用は役割別 workbook で行い、人が入力するのは input / writeback シートだけにする。**
+**日常運用は役割別 workbook で行い、人が入力するのは input / writeback シートだけにする。**
