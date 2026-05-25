@@ -30,6 +30,8 @@
 - workbook 側 import は `publish/views/` の feature facade へ分離済み
 - writeback input contract は `potex-gas/src/contracts/` に集約済み
 - approval queue には `CS_承認診断` / 拡張 `CS_承認進捗` / `inspect_approval_queue_state.py` を追加済み
+- `runPublishAll` 後の live verify で `CS_承認診断` / `CS_承認進捗` の反映を確認済み
+- ERP foundation 文書として `docs/plans/customer-ownership-matrix.md` と `docs/plans/erp-module-map.md` を追加済み
 
 ## いま残っている本質課題
 1. **運用承認キューの処理はまだ人手依存が大きい**
@@ -130,24 +132,25 @@
 
 ---
 
-### Priority 2 — ERP ツールの基礎設計
+### Priority 2 — ERP ツールの基礎設計（着手済み）
 **目的:** spreadsheet から web/API 中心運用へ移るための最小単位を定める。
 
-#### Task 2-1: customer ownership matrix を確定する
-**Objective:** 顧客ごとに誰が更新責任を持つかを固定する。
+#### Task 2-1: customer ownership matrix を確定する（たたき台作成済み）
+**Result:** `docs/plans/customer-ownership-matrix.md` を追加し、owner / overwrite / review rule の初版を定義した。
 
 **Files:**
-- Create: `docs/plans/customer-ownership-matrix.md` または同等の日本語文書
-- Modify: `docs/backlog.md`
-- Modify: `agents/session.md`
+- Created: `docs/plans/customer-ownership-matrix.md`
+- Modified: `docs/backlog.md`
+- Modified: `agents/session.md`
 
-**Deliverables:**
-- customer field ごとの owner（営業 / CS / コーチ / 自動取込）
-- overwrite rules / merge rules / review rules
+**Delivered:**
+- identity / lifecycle / channel / risk note の owner たたき台
+- overwrite policy（upstream wins / operator wins / relation wins）
+- review required field 群の整理
 
 **Verification:**
-- `Customers` cutover 着手条件が曖昧でなくなる
-- `Customer_Edit_History` の設計入力になる
+- `Customers` cutover 前に owner 未定義 field を洗い出せる
+- future `Customer_Edit_History` 設計の前提になる
 
 #### Task 2-2: `Customer_Edit_History` の最小設計を確定する
 **Objective:** 将来の ERP UI / API で変更履歴を追える前提を作る。
@@ -166,20 +169,20 @@
 - 人手更新と自動更新を同じ枠組みで説明できる
 - ERP 化時に audit trail 要件へそのまま繋がる
 
-#### Task 2-3: ERP 候補モジュール一覧と API 候補境界を作る
-**Objective:** 何を先に web/API 化すべきかを順序づける。
+#### Task 2-3: ERP 候補モジュール一覧と API 候補境界を作る（たたき台作成済み）
+**Result:** `docs/plans/erp-module-map.md` を追加し、candidate modules / priority / dependency を整理した。
 
 **Files:**
-- Create: `docs/plans/erp-module-map.md` または統合ロードマップ文書
-- Modify: `docs/architecture-guardrails.md`
+- Created: `docs/plans/erp-module-map.md`
+- Modify: `docs/architecture-guardrails.md` (follow-up if needed)
 
-**Deliverables:**
-- 候補 module: customers, assignments, feedback, continuation, payments, partner pipeline, executive reporting
-- 各 module の inputs / outputs / operators / spreadsheet dependencies
-- 「先に API 化」「最後まで spreadsheet でよい」を分けた優先表
+**Delivered:**
+- modules: customers, assignments, feedback, continuation, payments, partner pipeline, executive reporting
+- module dependency order
+- API first / spreadsheet acceptable longer の区分
 
 **Verification:**
-- 次に作る ERP ツールが思いつきではなく、既存 canonical 境界に沿って選べる
+- 次に作る ERP ツールを、既存 canonical 境界に沿って選べる
 
 ---
 

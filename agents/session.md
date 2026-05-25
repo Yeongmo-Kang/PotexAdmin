@@ -1,6 +1,6 @@
 # Potex セッションチェックポイント
 
-更新: 2026-05-25T01:20:35+09:00
+更新: 2026-05-25T09:18:30+09:00
 
 ## いまの前提
 - GitHub repo `origin` (`Yeongmo-Kang/PotexAdmin`, branch `main`) を文書・コード・計画の一次基準にする
@@ -26,6 +26,8 @@
   - `publish/views/` feature facade 分離
   - `contracts/` ベースの writeback input contract 集約
   - `CS_承認診断` / 拡張 `CS_承認進捗` / approval inspect script 追加
+  - `docs/plans/customer-ownership-matrix.md` / `docs/plans/erp-module-map.md` 追加
+  - `runPublishAll` 後の live verify で CS approval surfaces 反映確認
 
 ## 2026-05-25 時点の実態整理
 ### 稼働中のもの
@@ -37,11 +39,11 @@
 - GitHub main / bare mirror / bundle backup / repo backup cron は有効
 
 ### いま本当に残っている作業
-1. ERP module map / customer ownership / `Customer_Edit_History` 設計
+1. `Customer_Edit_History` 設計
 2. facade の内側に残る `publish/views.ts` helper の段階移管
-3. live workbook で `CS_承認診断` / 拡張 `CS_承認進捗` / inspect script の運用確認
+3. operator 実処理として approval queue の P1 を前に進める
 4. その後に営業自動化 (`P-013`) の前提整理
-5. operator 実処理が必要な approval queue の前進
+5. customer ownership matrix の業務側確定版レビュー
 
 ### 人入力が必要なもの
 - `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の承認処理

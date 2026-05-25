@@ -72,6 +72,22 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - 運用担当者が日常的に直接修正する場所ではない
 - 管理者 / 自動化の基準 workbook
 
+### 3.4 その日の最初の確認順
+#### CS 担当者
+1. `CS_承認診断`
+2. `CS_承認進捗`
+3. `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の該当 P1
+4. `CS_要フォロー一覧`
+5. `CS_継続対象一覧`
+
+#### 管理者 / 自動化担当
+1. `経営_会議前チェック`
+2. `経営_更新状況`
+3. 必要なら `POTEX DB > Sync_Log`
+4. CLI が使える場合は read-only inspect script
+   - `python inspect_post_refresh_state.py`
+   - `python inspect_approval_queue_state.py`
+
 ---
 
 ## 4. シートごとの役割
@@ -142,6 +158,7 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
   - 次回 writeback 待ちか
   - writeback 自体が stale で点検が必要か
   を最短で切り分ける
+- live 反映済みの現在は、まずこのタブだけで **operator action / system wait / automation check** を見分けられる
 
 運用担当者が行うこと:
 - 最初にこのタブを見る
@@ -156,6 +173,7 @@ concierge が follow-up の文脈を読み取り専用で確認する workbook
 - `CS_承認診断` の判断根拠になっている件数・時刻・throughput の詳細
 - `CS_入金名寄せ確認` / `CS_継続名寄せ確認` の **現在の open queue** と、直近 7 日の writeback 処理量を 1 か所にまとめた運用モニタリングタブ
 - `open_p1`、`p1_undecided`、`decided_waiting_sync`、`invalid_open`、`source_wait_open`、`last_writeback_age` により、どこが実際のボトルネックかを素早く確認する
+- live workbook では `queue_status` / `recommended_next_action` も出ているため、件数モニタと次アクション確認を同じタブで補助できる
 
 運用担当者が行うこと:
 - `CS_承認診断` で `recommended_next_action` を確認してから、このタブで件数と時刻の裏取りをする
