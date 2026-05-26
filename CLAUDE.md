@@ -1,77 +1,81 @@
-# CLAUDE.md — Potex プロジェクト運用ガードレール
+# CLAUDE.md — Potex Project Guardrails
 
-## アーキテクチャ原則 (2026-05-18)
-- **canonical database は `POTEX DB` のみ。** staging / canonical / mapping / exception / system シートは、すべてここで管理する。
-- **DB に重複データや derive-only データを保存しない。** staging から 100% 導ける正規化結果は、シートに永続化せず publish 時の join で計算する。
-- 他の workbook の役割は次の 3 つだけ。
-  1. **集計表示**: DB を参照する read-only の要約表示
-  2. **絞り込みビュー**: 特定ユーザーと必要な列だけを表示
-  3. **トリガー入力**: operator の入力を writeback collection で DB に反映
-- **publish シートへ手入力しない。** 入力は明示された input タブ (`CS_別名解決入力`, `CS_担当割当入力`, `CS_更新アクション`, `パートナー_状況入力`) のみで行う。
+## Architectural principle (2026-05-18)
+- **POTEX DB만 canonical database.** 모든 staging / canonical / mapping / exception / system 시트는 여기서만 관리된다.
+- **DB에 중복/derive-only 데이터 저장 금지.** staging에서 100% derive 가능한 정규화 결과는 sheet으로 영속화하지 말고 publish 시점 join으로 계산한다.
+- 다른 워크북의 역할은 세 가지 중 하나:
+  1. **통계 표시** (DB 참조해서 read-only summary 노출)
+  2. **필터링 뷰** (특정 user list + 특정 columns만 노출)
+  3. **트리거 입력** (operator 입력이 writeback collection으로 DB에 반영)
+- **publish 시트에 수기 입력 금지.** 입력은 명시적 input 탭 (`CS_別名解決入力`, `CS_更新アクション`)에서만 한다.
 
 ## Workbook map
-| 役割 | 名前 | spreadsheet_id |
+| 역할 | 이름 | spreadsheet_id |
 |---|---|---|
 | Canonical DB | `POTEX DB` | `1sJuEM1RXn5zVeBj6dVTujnf0P2m-CweLPbt_gpcxFFs` |
-| CS 運用 | `Potex CS` | `1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg` |
-| Executive モニタリング | `Potex Executive` | `1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY` |
+| CS 운영 | `Potex CS` | `1KFRLdsT2-LlhSA0YLkXuV3Oh76yxnhL_6tvmOdvv4yg` |
+| Executive 모니터링 | `Potex Executive` | `1pnEWHFdGHY6Er3aAXuvAz-H1MwgQcvrEZq_Z5oqdwuY` |
 | Concierge read-only | `Potex Concierge` | `1c-Ie03M619iMqhwqV1jHPSYDVPTMHPPKs6zhSr8QPr8` |
-| Sales read-only | `Potex Sales` | `1i5uxVG9IUu0PTPSy9MqWMHcmNDNk3LDJwZo7nqT_Xao` |
-| Coaches read-only | `Potex Coaches` | `19jpwf97PwDj93bVB3WJdhXhtT-vo8YmNGA6T0eEigUc` |
-| Partner status input | `Potex Sato` | auto-provisioned / script property (`SATO_SPREADSHEET_ID`) |
-| Partner status input | `Potex Inai` | auto-provisioned / script property (`INAI_SPREADSHEET_ID`) |
 
-## Source workbooks（編集禁止・定着後に廃止予定）
-新しいシート構成が定着したら利用を止める予定だが、現時点では業務フロー確認用の reference 兼、短期 ingest source である。**read-only で扱う。**
+## Source workbooks (수정 금지, 정착 후 deprecation 예정)
+신규 시트 구조가 정착하면 사용을 끊을 예정이지만, 현재는 업무 흐름 파악용 reference이자 단기 ingest source이다. **읽기 전용으로만 다룬다.**
 
-| シート | spreadsheet_id | 現在の役割 |
+| 시트 | spreadsheet_id | 현재 역할 |
 |---|---|---|
-| `受講者管理` | `17fkrUdf-vS7tQ06lzR3LDp-PPsWSwajqPcB0vyRXOk4` | customer master + 申込 form |
-| `顧客満足度会議` | (要確認) | 運用会議用 |
-| `月次振り返りアンケート（回答）` | `1hl2JVJ_DSvjtk8axnZWJ8TTwOIMECfkREg7rN6tbDH8` | feedback Form 応答 |
-| `⭕️使用中｜POTEX数値管理` | `1arXU3lqzY8c7-mYY7CnDlxEpr5ar68Q2m4h4HEwLYC8` | 売上 / 体験 / 実需 + `LStep` CSV import の中継 (`csvA`/`csv_potex`) |
+| `受講者管理` | `17fkrUdf-vS7tQ06lzR3LDp-PPsWSwajqPcB0vyRXOk4` | customer master + 신청 form |
+| `顧客満足度会議` | (확인 필요) | 운영 회의용 |
+| `月次振り返りアンケート（回答）` | `1hl2JVJ_DSvjtk8axnZWJ8TTwOIMECfkREg7rN6tbDH8` | feedback Form 응답 |
+| `⭕️使用中｜POTEX数値管理` | `1arXU3lqzY8c7-mYY7CnDlxEpr5ar68Q2m4h4HEwLYC8` | 매출/체험/실주 + LStep CSV import 경유지 (`csvA`/`csv_potex`) |
 
-source / reference workbook で禁止すること:
-- 構造変更 / タブ削除 / 手作業の整理 / GAS write
-- alias 問題を source 側の命名変更で解決すること
-- 「確信のない名前マッチ」を alias map に `approved` で入れること
+원본 시트에 대한 금지:
+- 구조 변경 / 탭 삭제 / 수동 정리 / GAS write
+- alias 문제를 source-side naming으로 해결
+- "확신 없는 이름 매칭"을 alias map에 `approved` 처리
 
-## Upstream operational flow (2026-05-18 確認)
-- 公式 LINE 友だち追加と LINE タグ / 顧客情報の実 upstream は `LStep`。
-- 営業は面談結果を Slack に報告し、CS はその報告を見て `LStep` のタグ / 顧客情報を更新する。
-- その後、`LStep` や関連画面から形式別 CSV をダウンロードし、運用 spreadsheet へ手動 import する。
-- GAS は、その spreadsheet import 結果を読んで dashboard / managed workbook を refresh する。
-- そのため現在の spreadsheet reader は、短期の中継用として薄く保ち、長期では `LStep` export/API または Slack→`LStep` 業務フローへ置き換えられる形にしておく。
-- **保留原則:** `LStep` API/writeback、TimeRex 連携、marketing-CS workflow 変更は、プラン / オプション / API / 業務基準の確認が終わるまで実装しない。その間は `LStep` / TimeRex に依存しない Phase 1 hardening を優先する。
+## Upstream operational flow (2026-05-18 확인)
+- 공식 LINE 친구추가와 LINE 태그/고객정보의 실제 upstream은 `LStep`이다.
+- 영업은 고객 면담 결과를 Slack에 보고하고, CS가 그 보고를 보고 LStep 태그/고객정보를 갱신한다.
+- 이후 LStep/관련 화면에서 포맷별 CSV를 다운로드하고, 운영 spreadsheet에 수동 import한다.
+- GAS는 그 spreadsheet import 결과를 읽어 dashboard / managed workbook을 refresh한다.
+- 따라서 현재 spreadsheet reader는 단기 경유지용으로 얇게 유지하고, 장기적으로 LStep export/API 또는 Slack→LStep 업무흐름으로 교체 가능해야 한다.
+- **보류 원칙:** LStep API/writeback, TimeRex 연계, 마케팅-CS workflow 변경은 플랜/옵션/API/업무 기준 확인 전까지 구현하지 않는다. 그동안은 LStep/TimeRex에 의존하지 않는 Phase 1 hardening을 우선한다.
 
-## 現在の判定状況（2026-05-19）
+## Current verdicts (2026-05-26)
+- Phase A customer v2 pipeline live (3 commits pushed `e6f00dd`/`00555a3`/`31f678f`, clasp push pending):
+  - `Customers.lifecycle_status` ingest from `受講者管理.状態`
+  - `顧客一覧_成約以降` H 컬럼 `ステータス` (`成約`/`クーオフ`/`返金`/`解約`) + 회색 grayout CF rule
+  - X 컬럼 `AFSプラン` / Y 컬럼 `AFS契約日` 신규 추가 (`今後提案可能性` 뒤)
+  - `Import_csvD` 탭 자동 생성 + LStep paste 가이드 notice
+  - 직근 publish 결과: 222行 / shodan matched 57 / unmatched 165 / ambiguous skipped 25
+
+## Current verdicts (2026-05-19)
 - customer ingest: `raw_source_configured_and_named_rows_aligned`
-- ops view 3種 (`Ops_コーチ_担当負荷`, `Ops_Followup_Queue`, `Ops_Continuation_Targets`): **accept**
-- `CS_要フォロー一覧` publish contract bug: 修正済み
+- ops view 3종 (`Ops_コーチ_担当負荷`, `Ops_Followup_Queue`, `Ops_Continuation_Targets`): **accept**
+- CS_要フォロー一覧 publish contract bug: 수정 완료
 - commercial first-pass: live `Staging_Payments` 136 / `Plans` 228 / `Payments` 136 / `ConversionHistory` 543+
 - LINE registration ingest: live (`Staging_LineRegistration=10693`)
-- attribution normalization: publish-time `tokenizeAttributionTags()` join 正常 (`acquisition_with_channel_count=4622`, `acquisition_top_channels=yt=4524; inflow=126`)
-- `CS_入金名寄せ確認`: header 29 columns 正常, `P1=39`, operator approval ready
-- `CS_継続名寄せ確認`: header 26 columns 正常, `P1=10`, operator approval ready
-- `clasp push` 復旧済み (`y.kang@potex.jp` アカウント)
-- cold-start defense: `Customer_Coach_Assignments` / `Customer_Channel_Links` がなくても ingest は throw しない
-- `clearAndRewrite` merged-cell 防御: `breakApart()` 適用済み
-- 4 verdict (`inspect_post_refresh_state.py`) はすべて green
+- attribution normalization: publish-time `tokenizeAttributionTags()` join 정상 (`acquisition_with_channel_count=4622`, `acquisition_top_channels=yt=4524; inflow=126`)
+- `CS_入金名寄せ確認`: header 29 columns 정상, `P1=39`, operator approval ready
+- `CS_継続名寄せ確認`: header 26 columns 정상, `P1=10`, operator approval ready
+- `clasp push` 복구됨 (`y.kang@potex.jp` 계정)
+- cold-start defense: `Customer_Coach_Assignments` / `Customer_Channel_Links` 누락 시 ingest throw 안 함
+- `clearAndRewrite` merged-cell 방어: `breakApart()` 적용
+- 4개 verdict (`inspect_post_refresh_state.py`) 모두 green
 
-## Tab inventory (`POTEX DB`)
-- Staging mirror (legacy): `Staging_Customers`, `Staging_Payments` — 段階的に廃止中 (P-012)。`Staging_LineRegistration` / `Staging_Feedback` は吸収済み。
+## Tab inventory (POTEX DB)
+- Staging mirror (legacy): `Staging_Customers`, `Staging_Payments` — 점진 제거 중 (P-012). `Staging_LineRegistration` / `Staging_Feedback`는 흡수 완료.
 - Canonical: `Customers`, `Coaches`, `Sessions`, `Feedback`, `Plans`, `Payments`, `ConversionHistory`, `Customer_Coach_Assignments`, `Customer_Channel_Links`, `Line_Registrations`
 - Mapping/Exception: `Coach_Name_Map`, `Coach_Alias_Map`, `Customer_Alias_Map`, `Exceptions_FeedbackMatch`, `Exceptions_ContinuationMatch`
 - Ops views: `Ops_Feedback_Review`, `Ops_Followup_Queue`, `Ops_コーチ_担当負荷`, `Ops_ZeroSession_Review`, `Ops_Continuation_Targets`
 - System: `Sync_Log`, `Sync_Control`, `Publish_Manifest`
 
-## ConversionHistory event types（時系列順）
+## ConversionHistory event types (in chronological order)
 `line_registered` → `lead_created` → `experience_scheduled` → `contracted` → `paid` → `completed` / `lost`
 
 ## Trigger cadence
-- publish: 1時間ごと
-- writeback collection: 30分ごと
-- full refresh: 毎日 07:00
+- publish: 1h
+- writeback collection: 30m
+- full refresh: daily 07:00
 
 ## Key paths
 - GAS code: `potex-gas/src/`
@@ -80,9 +84,24 @@ source / reference workbook で禁止すること:
 - Session checkpoint: `agents/session.md`
 - Operations: `OPERATIONS_MANUAL.md`, `PHASE1_CUTOVER_RUNBOOK.md`
 
-## どの作業でも最初に行う順番
-1. `agents/session.md` を最初に確認する
-2. `docs/backlog.md` で active / next / blocked を確認する
-3. 依頼が文書 / 運用 / 実装のどれかを分類する
-4. 実装の場合、source workbook は read-only のまま、write は `POTEX DB` のみへ行う
-5. 結果を検証したら `docs/backlog.md` と `agents/session.md` を更新する
+## Repository & deployment mapping (DO NOT FORGET)
+- Real repo (single source of truth): `~/.hermes/projects/potex/` (WSL symlink) = `C:\Users\zerom\Desktop\DevZero\projects\potex\` (Windows physical, same files).
+- GitHub: https://github.com/Yeongmo-Kang/PotexAdmin (account `y.kang@potex.jp`, branch `main`).
+- GAS container (bound spreadsheet): https://docs.google.com/spreadsheets/d/1krTNU3eozS2y8Gl2NrWmIHzH2pQYjOWLL1NbzfhktQU
+- GAS scriptId: `1LL3mMAL_jJga2mPW_p9n1qcj1M23URHwtK9tRqqA3D8KilfknUxgHpc0` (see `potex-gas/.clasp.json`).
+- Build/push: `cd potex-gas && npm run build && npm run push` (build = typecheck + esbuild bundling `src/gas-entry.ts` → `dist/code.js`; push = `clasp push -f` from `dist/`).
+- Local clasp 2.5.0 in `potex-gas/node_modules/.bin/clasp` (token shape: flat `{token:{access_token,refresh_token,...}}`). Global clasp 3.x expects `{tokens:{default:...}}`. If `invalid_rapt` appears the token has expired; manual OAuth re-exchange is required.
+- `_claude/potex-gas-staging/` under `DevZero/_claude/` is a **draft/scratch dir only** — no `package.json`, no `.clasp.json`, no `.git`. Any edits made there MUST be migrated into `potex-gas/src/` and built+pushed to take effect.
+
+## Phase A scope (LStep csvD → POTEX DB → POTEX_顧客管理_v2)
+- v2 workbook: `1WHg9GZjsBn28U5ptV8V0kTOEBCPxVTZ2e9FzsfWDaV0` (PROPS `CUSTOMER_V2_SPREADSHEET_ID`).
+- Functions: `runImportCsvD`, `runPublishCustomerV2`, `runWritebackCustomerV2`.
+- View `顧客一覧_成約以降` (replaces `商談リスト`): 24 cols, joins `商談リスト` by composite (name+成約日) then name-unique-both-sides, blanks ambiguous matches.
+- Lifecycle status (refund/cancel) convention: 受講者管理タブに「状態」列 (single char header, confirmed 2026-05-26) を追加. Values: blank (=成約) / `クーオフ` / `返金` / `解約`. View grays out non-empty rows. Ingest reads via `getByAliases(row, customerHeader, ['状態', 'lifecycle_status'])`; pushes to `Customers.lifecycle_status` via `syncCustomerLifecycleStatus` (canonical/ingest.ts).
+
+## Working order for any task
+1. `agents/session.md` 먼저 확인
+2. `docs/backlog.md`로 active / next / blocked 상태 확인
+3. 요청이 문서 / 운영 / 구현 중 무엇인지 분류
+4. 구현이면 source workbook은 read-only만, write는 POTEX DB로
+5. 결과 검증 후 backlog + session.md 갱신
