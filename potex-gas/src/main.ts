@@ -244,10 +244,21 @@ export function runImportCsvD(): void {
 
 export function runPublishCustomerV2(): void {
   withScriptLock('runPublishCustomerV2', () => {
-    publishCustomerWorkbook();
-    appendSyncLog('runPublishCustomerV2', 'success');
+    const stats = publishCustomerWorkbook();
+    appendSyncLog('runPublishCustomerV2', 'success', stats as unknown as SyncLogDetails);
     try {
-      SpreadsheetApp.getUi().alert('v2公開 完了', 'POTEX_顧客管理_v2 の表示タブを再生成しました。', SpreadsheetApp.getUi().ButtonSet.OK);
+      const ui = SpreadsheetApp.getUi();
+      ui.alert(
+        'v2公開 完了',
+        [
+          `顧客一覧_成約以降: ${stats.customerRows}件`,
+          `商談リスト join: matched=${stats.shodanMatched} / unmatched=${stats.shodanUnmatched}`,
+          stats.shodanAmbiguousNameSkipped > 0
+            ? `※ 同名人物で曖昧マッチ回避: ${stats.shodanAmbiguousNameSkipped}件 (空欄)`
+            : '',
+        ].filter(Boolean).join('\n'),
+        ui.ButtonSet.OK,
+      );
     } catch (error) {
       // UI may be unavailable
     }

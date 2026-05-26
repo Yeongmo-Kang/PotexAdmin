@@ -1,19 +1,19 @@
 import { RuntimeConfig } from '../config';
 import { SHEETS } from '../constants';
-import { openSpreadsheetById, readSheetAsObjects } from '../sheets';
+import { openSpreadsheetById } from '../sheets';
 
-export const IMPORT_CSV_D_REQUIRED_LABELS = ['登録ID', '友だち追加日時', '成約'] as const;
+export const IMPORT_CSV_D_REQUIRED_LABELS = ['ID', '友だち追加日時', '成約'] as const;
 
 const BOOLEAN_TAG_LABELS = [
   '勉強会予約',
-  '体験応募済み(HP)',
-  '体験応募済み(シナリオ)',
-  '体験応募済み(RM)',
-  '体験応募済み(プッシュ)',
-  '体験応募済み(勉強会経由)',
+  '体験応募済み',
+  '体験応募済み｜シナリオ経由',
+  '体験応募済み｜RM経由',
+  '体験応募済み｜プッシュ経由',
+  '体験応募済み｜勉強会経由',
+  '体験応募済み｜HP経由',
   '7日以上日程調整返信なし',
-  '審査不合格',
-  '分母除外',
+  '審査不合格・分母除外',
   '日程調整済み',
   '体験キャンセル',
   '再面談',
@@ -24,9 +24,9 @@ const BOOLEAN_TAG_LABELS = [
 const DATE_TAG_LABELS = [
   '勉強会予約日',
   'コーチング体験申込日',
-  '日程調整完了',
-  '体験日',
-  '体験キャンセル日',
+  'コーチング体験日程調整完了',
+  'コーチング体験日',
+  'コーチング体験キャンセル',
   '成約日',
   '失注日',
 ] as const;
@@ -135,7 +135,7 @@ function parseCsvDRows(values: string[][]): {
   const rows: LstepRow[] = [];
   dataRows.forEach((row) => {
     if (!row || row.every((cell) => String(cell || '').trim() === '')) return;
-    const lineUserId = pickByLabel(row, labelToColumn, '登録ID');
+    const lineUserId = pickByLabel(row, labelToColumn, 'ID');
     if (!lineUserId) return;
     const friendAddedAt = pickByLabel(row, labelToColumn, '友だち追加日時');
     const isContracted = parseBooleanCell(pickByLabel(row, labelToColumn, '成約'));
@@ -173,16 +173,27 @@ function reconcileLineRegistrations(
   if (!sheet) {
     throw new Error(`Sheet not found: ${SHEETS.LINE_REGISTRATIONS}`);
   }
-  const existing = readSheetAsObjects(db, SHEETS.LINE_REGISTRATIONS);
-  const allValues = sheet.getDataRange().getValues();
-  if (allValues.length === 0) {
+  const initialValues = sheet.getDataRange().getValues();
+  if (initialValues.length === 0) {
     throw new Error(`Sheet has no header: ${SHEETS.LINE_REGISTRATIONS}`);
   }
-  const header = allValues[0].map((cell) => String(cell || ''));
+  const header = initialValues[0].map((cell) => String(cell || ''));
   const lineUserIdCol = header.indexOf('line_user_id');
   if (lineUserIdCol < 0) {
     throw new Error(`Column not found in ${SHEETS.LINE_REGISTRATIONS}: line_user_id`);
   }
+
+  const additions: string[] = [];
+  ['friend_status', 'lstep_is_contracted', 'lstep_contract_date', 'lstep_lost_date', 'lstep_last_seen_at'].forEach((col) => {
+    if (header.indexOf(col) < 0) additions.push(col);
+  });
+  additions.forEach((col) => header.push(col));
+
+  const dataRows: unknown[][] = initialValues.slice(1).map((row) => {
+    const copy = row.slice();
+    for (let i = 0; i < additions.length; i += 1) copy.push('');
+    return copy;
+  });
 
   const friendStatusCol = header.indexOf('friend_status');
   const lstepContractFlagCol = header.indexOf('lstep_is_contracted');
@@ -190,29 +201,17 @@ function reconcileLineRegistrations(
   const lstepLostDateCol = header.indexOf('lstep_lost_date');
   const lstepLastSeenCol = header.indexOf('lstep_last_seen_at');
   const updatedAtCol = header.indexOf('updated_at');
+  const createdAtCol = header.indexOf('created_at');
+  const lineRegistrationIdCol = header.indexOf('line_registration_id');
+  const segmentCol = header.indexOf('segment');
+  const displayNameCol = header.indexOf('display_name');
+  const lineRegistrationNameCol = header.indexOf('line_registration_name');
+  const registeredAtCol = header.indexOf('registered_at');
 
-  const additions: string[] = [];
-  if (friendStatusCol < 0) additions.push('friend_status');
-  if (lstepContractFlagCol < 0) additions.push('lstep_is_contracted');
-  if (lstepContractDateCol < 0) additions.push('lstep_contract_date');
-  if (lstepLostDateCol < 0) additions.push('lstep_lost_date');
-  if (lstepLastSeenCol < 0) additions.push('lstep_last_seen_at');
-  if (additions.length > 0) {
-    const startCol = header.length + 1;
-    sheet.getRange(1, startCol, 1, additions.length).setValues([additions]);
-    additions.forEach((col) => header.push(col));
-  }
-  const resolvedFriendStatusCol = friendStatusCol >= 0 ? friendStatusCol : header.indexOf('friend_status');
-  const resolvedFlagCol = lstepContractFlagCol >= 0 ? lstepContractFlagCol : header.indexOf('lstep_is_contracted');
-  const resolvedDateCol = lstepContractDateCol >= 0 ? lstepContractDateCol : header.indexOf('lstep_contract_date');
-  const resolvedLostCol = lstepLostDateCol >= 0 ? lstepLostDateCol : header.indexOf('lstep_lost_date');
-  const resolvedSeenCol = lstepLastSeenCol >= 0 ? lstepLastSeenCol : header.indexOf('lstep_last_seen_at');
-
-  const refreshedValues = sheet.getDataRange().getValues();
   const existingByLineUserId = new Map<string, number>();
-  refreshedValues.slice(1).forEach((row, idx) => {
+  dataRows.forEach((row, idx) => {
     const key = String(row[lineUserIdCol] || '').trim();
-    if (key) existingByLineUserId.set(key, idx + 2);
+    if (key) existingByLineUserId.set(key, idx);
   });
 
   let inserted = 0;
@@ -223,52 +222,57 @@ function reconcileLineRegistrations(
   rows.forEach((row) => {
     const key = row.lineUserId;
     seenIds.add(key);
-    const targetRowNumber = existingByLineUserId.get(key);
-    if (targetRowNumber !== undefined) {
-      const updates: Array<{ col: number; value: string }> = [];
-      if (resolvedFriendStatusCol >= 0) updates.push({ col: resolvedFriendStatusCol, value: FRIEND_STATUS_ACTIVE });
-      if (resolvedFlagCol >= 0) updates.push({ col: resolvedFlagCol, value: row.isContracted ? 'TRUE' : 'FALSE' });
-      if (resolvedDateCol >= 0) updates.push({ col: resolvedDateCol, value: row.contractDateLstep });
-      if (resolvedLostCol >= 0) updates.push({ col: resolvedLostCol, value: row.lostDateLstep });
-      if (resolvedSeenCol >= 0) updates.push({ col: resolvedSeenCol, value: syncedAt });
-      if (updatedAtCol >= 0) updates.push({ col: updatedAtCol, value: syncedAt });
-      updates.forEach(({ col, value }) => {
-        sheet.getRange(targetRowNumber, col + 1).setValue(value);
-      });
+    const idx = existingByLineUserId.get(key);
+    if (idx !== undefined) {
+      const target = dataRows[idx];
+      if (friendStatusCol >= 0) target[friendStatusCol] = FRIEND_STATUS_ACTIVE;
+      if (lstepContractFlagCol >= 0) target[lstepContractFlagCol] = row.isContracted ? 'TRUE' : 'FALSE';
+      if (lstepContractDateCol >= 0) target[lstepContractDateCol] = row.contractDateLstep;
+      if (lstepLostDateCol >= 0) target[lstepLostDateCol] = row.lostDateLstep;
+      if (lstepLastSeenCol >= 0) target[lstepLastSeenCol] = syncedAt;
+      if (updatedAtCol >= 0) target[updatedAtCol] = syncedAt;
       updated += 1;
       return;
     }
 
-    const newRow: string[] = new Array(header.length).fill('');
+    const newRow: unknown[] = new Array(header.length).fill('');
     const setIf = (col: number, value: string) => {
       if (col >= 0) newRow[col] = value;
     };
-    setIf(header.indexOf('line_registration_id'), `line_csvd_${key}`);
-    setIf(header.indexOf('segment'), 'csvd');
+    setIf(lineRegistrationIdCol, `line_csvd_${key}`);
+    setIf(segmentCol, 'csvd');
     setIf(lineUserIdCol, key);
-    setIf(header.indexOf('display_name'), row.displayName);
-    setIf(header.indexOf('line_registration_name'), row.lineRegistrationName);
-    setIf(header.indexOf('registered_at'), row.friendAddedAt);
-    setIf(resolvedFriendStatusCol, FRIEND_STATUS_ACTIVE);
-    setIf(resolvedFlagCol, row.isContracted ? 'TRUE' : 'FALSE');
-    setIf(resolvedDateCol, row.contractDateLstep);
-    setIf(resolvedLostCol, row.lostDateLstep);
-    setIf(resolvedSeenCol, syncedAt);
-    setIf(header.indexOf('created_at'), syncedAt);
+    setIf(displayNameCol, row.displayName);
+    setIf(lineRegistrationNameCol, row.lineRegistrationName);
+    setIf(registeredAtCol, row.friendAddedAt);
+    setIf(friendStatusCol, FRIEND_STATUS_ACTIVE);
+    setIf(lstepContractFlagCol, row.isContracted ? 'TRUE' : 'FALSE');
+    setIf(lstepContractDateCol, row.contractDateLstep);
+    setIf(lstepLostDateCol, row.lostDateLstep);
+    setIf(lstepLastSeenCol, syncedAt);
+    setIf(createdAtCol, syncedAt);
     setIf(updatedAtCol, syncedAt);
-    sheet.appendRow(newRow);
+    dataRows.push(newRow);
     inserted += 1;
   });
 
-  if (resolvedFriendStatusCol >= 0) {
-    existingByLineUserId.forEach((rowNumber, lineUserId) => {
+  if (friendStatusCol >= 0) {
+    existingByLineUserId.forEach((idx, lineUserId) => {
       if (seenIds.has(lineUserId)) return;
-      const currentStatus = String(sheet.getRange(rowNumber, resolvedFriendStatusCol + 1).getValue() || '').trim();
+      const target = dataRows[idx];
+      const currentStatus = String(target[friendStatusCol] || '').trim();
       if (currentStatus === FRIEND_STATUS_ABSENT) return;
-      sheet.getRange(rowNumber, resolvedFriendStatusCol + 1).setValue(FRIEND_STATUS_ABSENT);
-      if (updatedAtCol >= 0) sheet.getRange(rowNumber, updatedAtCol + 1).setValue(syncedAt);
+      target[friendStatusCol] = FRIEND_STATUS_ABSENT;
+      if (updatedAtCol >= 0) target[updatedAtCol] = syncedAt;
       absentMarked += 1;
     });
+  }
+
+  if (additions.length > 0) {
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  }
+  if (dataRows.length > 0) {
+    sheet.getRange(2, 1, dataRows.length, header.length).setValues(dataRows);
   }
 
   return { inserted, updated, absentMarked };

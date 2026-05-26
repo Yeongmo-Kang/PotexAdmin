@@ -62,6 +62,7 @@ const STAGING_CUSTOMER_HEADER = [
   'continuation_tag',
   'program_completed_flag',
   'app_status',
+  'lifecycle_status',
   'email',
   'phone',
   'address',
@@ -479,6 +480,49 @@ function ensurePartnerAssigneeSeeds(db: GoogleAppsScript.Spreadsheet.Spreadsheet
   clearAndRewrite(db, SHEETS.COACHES, [header, ...rows.map((row) => header.map((key) => row[key] || ''))]);
 }
 
+function syncCustomerLifecycleStatus(
+  db: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  stagingRows: Array<Record<string, string>>,
+  syncedAt: string,
+): void {
+  const lifecycleByCustomerId = new Map<string, string>();
+  stagingRows.forEach((row) => {
+    const customerId = row['customer_id'] || '';
+    if (!customerId) return;
+    const status = String(row['lifecycle_status'] || '').trim();
+    lifecycleByCustomerId.set(customerId, status);
+  });
+  if (lifecycleByCustomerId.size === 0) return;
+
+  const sheet = db.getSheetByName(SHEETS.CUSTOMERS);
+  if (!sheet) return;
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) return;
+
+  const header = (values[0] || []).map(String);
+  const customerIdIdx = header.indexOf('customer_id');
+  if (customerIdIdx < 0) return;
+
+  let lifecycleIdx = header.indexOf('lifecycle_status');
+  if (lifecycleIdx < 0) {
+    lifecycleIdx = header.length;
+    sheet.getRange(1, lifecycleIdx + 1).setValue('lifecycle_status');
+  }
+
+  const updatedAtIdx = header.indexOf('updated_at');
+  for (let i = 1; i < values.length; i += 1) {
+    const row = values[i] || [];
+    const customerId = String(row[customerIdIdx] || '');
+    if (!customerId) continue;
+    if (!lifecycleByCustomerId.has(customerId)) continue;
+    const newValue = lifecycleByCustomerId.get(customerId) || '';
+    const currentValue = String(row[lifecycleIdx] || '').trim();
+    if (currentValue === newValue) continue;
+    sheet.getRange(i + 1, lifecycleIdx + 1).setValue(newValue);
+    if (updatedAtIdx >= 0) sheet.getRange(i + 1, updatedAtIdx + 1).setValue(syncedAt);
+  }
+}
+
 function syncCustomerLineRegistrationIds(
   db: GoogleAppsScript.Spreadsheet.Spreadsheet,
   lineRegistrationLookup: LineRegistrationLookup,
@@ -673,6 +717,7 @@ function buildStagingCustomers(
         continuation_tag: row['continuation_tag'] || '',
         program_completed_flag: row['program_completed_flag'] || '',
         app_status: row['app_status'] || '',
+        lifecycle_status: row['lifecycle_status'] || '',
         email: row['email'] || '',
         phone: row['phone'] || '',
         address: '',
@@ -746,6 +791,7 @@ function buildStagingCustomers(
       continuation_tag: canonical['continuation_tag'] || '',
       program_completed_flag: toBooleanFlag(completedFlag),
       app_status: appStatus,
+      lifecycle_status: getByAliases(row, customerHeader, ['状態', 'lifecycle_status']) || canonical['lifecycle_status'] || '',
       email: app['email'] || canonical['email'] || '',
       phone: app['phone'] || canonical['phone'] || '',
       address: app['address'] || '',
@@ -1005,6 +1051,7 @@ export function refreshCanonicalStaging(cfg: RuntimeConfig): Stats {
     ...customerChannelLinks.map((row) => CUSTOMER_CHANNEL_LINKS_HEADER.map((key) => row[key] || '')),
   ]);
   syncCustomerLineRegistrationIds(db, lineRegistrationLookup);
+  syncCustomerLifecycleStatus(db, stagingCustomers.rows, syncedAt);
   migrateCustomersSchema(db);
   clearAndRewrite(db, SHEETS.FEEDBACK, [
     FEEDBACK_HEADER,

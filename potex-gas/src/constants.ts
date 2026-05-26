@@ -79,4 +79,5 @@ export const VIEWS = {
   PARTNER_STATUS_INPUT: 'パートナー_状況入力',
   PARTNER_DATA_HEALTH: 'パートナー_データ状況',
   CUSTOMER_CONTRACTED_VIEW: '顧客一覧_成約以降',
+  CUSTOMER_SHODAN_LIST: '商談リスト',
 } as const;
