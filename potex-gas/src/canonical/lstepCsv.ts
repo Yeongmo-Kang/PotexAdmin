@@ -72,12 +72,23 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+const IMPORT_CSV_D_NOTICE = '※ このタブに LStep csvD エクスポートを A1 から貼り付けて [Potex Sync > 顧客DB (v2) > csvD取込] を実行してください。1行目=ID行 / 2行目=ラベル行 / 3行目以降=データ行 の構造を維持してください。';
+
+function ensureImportCsvDSheet(db: GoogleAppsScript.Spreadsheet.Spreadsheet): GoogleAppsScript.Spreadsheet.Sheet {
+  let sheet = db.getSheetByName(SHEETS.IMPORT_CSV_D);
+  if (sheet) return sheet;
+  sheet = db.insertSheet(SHEETS.IMPORT_CSV_D);
+  sheet.getRange(1, 1).setValue(IMPORT_CSV_D_NOTICE).setBackground('#FFE0B2').setFontWeight('bold');
+  return sheet;
+}
+
 function readImportCsvDValues(db: GoogleAppsScript.Spreadsheet.Spreadsheet): string[][] {
-  const sheet = db.getSheetByName(SHEETS.IMPORT_CSV_D);
-  if (!sheet) {
-    throw new Error(`Sheet not found: ${SHEETS.IMPORT_CSV_D}. operator が LStep CSV を A1 から貼り付けてください.`);
+  const sheet = ensureImportCsvDSheet(db);
+  const values = sheet.getDataRange().getDisplayValues();
+  if (values.length < 2 || values.every((row) => row.every((cell) => String(cell || '').trim() === '' || String(cell || '').startsWith('※')))) {
+    throw new Error(`${SHEETS.IMPORT_CSV_D} が空です。LStep csvD エクスポートを A1 から貼り付けてから再度実行してください。`);
   }
-  return sheet.getDataRange().getDisplayValues();
+  return values;
 }
 
 function ensureRequiredLabels(headerRow: string[]): { missing: string[]; labelToColumn: Map<string, number> } {
