@@ -24,6 +24,8 @@ const CUSTOMER_CONTRACTED_VIEW_HEADER = [
   '要対応フラグ',
   'アップグレード余地',
   '今後提案可能性',
+  'AFSプラン',
+  'AFS契約日',
   'last_synced_at',
 ] as const;
 
@@ -31,6 +33,16 @@ export const CUSTOMER_VIEW_COLUMN_COUNT = CUSTOMER_CONTRACTED_VIEW_HEADER.length
 
 function normalizeName(value: string): string {
   return String(value || '').replace(/[\s　]/g, '').trim();
+}
+
+function normalizeLifecycleStatus(value: string): string {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  const lower = v.toLowerCase();
+  if (v.includes('クーオフ') || v.includes('クールオフ') || lower.includes('cooloff') || lower.includes('cooling')) return 'クーオフ';
+  if (v.includes('返金')) return '返金';
+  if (v.includes('解約') || v.includes('キャンセル')) return '解約';
+  return v;
 }
 
 function normalizeDate(value: string): string {
@@ -73,6 +85,8 @@ function buildContractedSet(
   currentPlanNameByCustomerId: Map<string, string>;
   contractAmountByCustomerId: Map<string, string>;
   afsStatusByCustomerId: Map<string, 'none' | 'active' | 'ended'>;
+  afsPlanNameByCustomerId: Map<string, string>;
+  afsContractDateByCustomerId: Map<string, string>;
   recentPaymentDateByCustomerId: Map<string, string>;
   recentPaymentMethodByCustomerId: Map<string, string>;
   hasUnpaidByCustomerId: Map<string, boolean>;
@@ -82,6 +96,8 @@ function buildContractedSet(
   const currentPlanNameByCustomerId = new Map<string, string>();
   const contractAmountByCustomerId = new Map<string, string>();
   const afsStatusByCustomerId = new Map<string, 'none' | 'active' | 'ended'>();
+  const afsPlanNameByCustomerId = new Map<string, string>();
+  const afsContractDateByCustomerId = new Map<string, string>();
 
   plansRows.forEach((row) => {
     const customerId = row['customer_id'] || '';
@@ -103,6 +119,15 @@ function buildContractedSet(
         afsStatusByCustomerId.set(customerId, 'active');
       } else if (status === 'ended' || status === '終了' || status === 'closed' || status === '完了') {
         if (currentAfs !== 'active') afsStatusByCustomerId.set(customerId, 'ended');
+      }
+      if (planName && !afsPlanNameByCustomerId.has(customerId)) {
+        afsPlanNameByCustomerId.set(customerId, planName);
+      }
+      if (contractDate) {
+        const existingAfsDate = afsContractDateByCustomerId.get(customerId);
+        if (!existingAfsDate || contractDate < existingAfsDate) {
+          afsContractDateByCustomerId.set(customerId, contractDate);
+        }
       }
     }
     const isActiveStatus = status === 'active' || status === '進行中' || status === '稼働' || status === '';
@@ -150,6 +175,8 @@ function buildContractedSet(
     currentPlanNameByCustomerId,
     contractAmountByCustomerId,
     afsStatusByCustomerId,
+    afsPlanNameByCustomerId,
+    afsContractDateByCustomerId,
     recentPaymentDateByCustomerId,
     recentPaymentMethodByCustomerId,
     hasUnpaidByCustomerId,
@@ -293,6 +320,7 @@ export type CustomerContractedViewResult = {
   shodanMatched: number;
   shodanUnmatched: number;
   shodanAmbiguousNameSkipped: number;
+  refundedCount: number;
 };
 
 export function buildCustomerContractedView(inputs: CustomerContractedViewInputs): CustomerContractedViewResult {
@@ -333,6 +361,7 @@ export function buildCustomerContractedView(inputs: CustomerContractedViewInputs
   let shodanMatched = 0;
   let shodanUnmatched = 0;
   let shodanAmbiguousNameSkipped = 0;
+  let refundedCount = 0;
 
   customers.forEach((customer) => {
     const customerId = customer['customer_id'] || '';
@@ -356,6 +385,11 @@ export function buildCustomerContractedView(inputs: CustomerContractedViewInputs
     const followupFlag = followupFlagSet.has(customerId) ? 'TRUE' : 'FALSE';
     const upgradePotential = upgradePotentialByCustomerId.get(customerId) || '';
     const futureProposal = futureProposalByCustomerId.get(customerId) || '';
+    const afsPlanName = contractInfo.afsPlanNameByCustomerId.get(customerId) || '';
+    const afsContractDate = contractInfo.afsContractDateByCustomerId.get(customerId) || '';
+    const lifecycleStatus = normalizeLifecycleStatus(customer['lifecycle_status'] || '');
+    const displayStatus = lifecycleStatus || '成約';
+    if (lifecycleStatus) refundedCount += 1;
 
     const shodan = lookupShodan(shodanIndex, displayName, contractDate, dbNameCounter);
     if (shodan.matched) {
@@ -380,7 +414,7 @@ export function buildCustomerContractedView(inputs: CustomerContractedViewInputs
       shodanInflow,
       shodanShodanDate,
       '',
-      '成約',
+      displayStatus,
       '',
       contractDate,
       currentPlanName,
@@ -396,9 +430,11 @@ export function buildCustomerContractedView(inputs: CustomerContractedViewInputs
       followupFlag,
       upgradePotential,
       futureProposal,
+      afsPlanName,
+      afsContractDate,
       syncedAt,
     ]);
   });
 
-  return { rows, shodanMatched, shodanUnmatched, shodanAmbiguousNameSkipped };
+  return { rows, shodanMatched, shodanUnmatched, shodanAmbiguousNameSkipped, refundedCount };
 }
