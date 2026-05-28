@@ -40,6 +40,23 @@ export const PLANS_HEADER = [
   'updated_at',
 ] as const;
 
+export const CUSTOMER_PLANS_HEADER = [
+  'customer_plan_id',
+  'customer_id',
+  'plan_id',
+  'plan_name',
+  'plan_type',
+  'sessions_included',
+  'contract_date',
+  'start_date',
+  'end_date',
+  'amount_tax_included',
+  'status',
+  'note',
+  'created_at',
+  'updated_at',
+] as const;
+
 export const PAYMENTS_HEADER = [
   'payment_id',
   'customer_id',
@@ -50,6 +67,26 @@ export const PAYMENTS_HEADER = [
   'payment_status',
   'invoice_number',
   'note',
+  'created_at',
+  'updated_at',
+] as const;
+
+export const MEMBERS_HEADER = [
+  'coach_id',
+  'coach_name',
+  'roles',
+  'coach_type',
+  'is_partner',
+  'email',
+  'line_url',
+  'specialty',
+  'coverage_areas',
+  'contract_type',
+  'work_status',
+  'assignee_scope',
+  'external_role',
+  'is_active',
+  'memo',
   'created_at',
   'updated_at',
 ] as const;
