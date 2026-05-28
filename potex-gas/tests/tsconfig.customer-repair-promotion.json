@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "../tests-dist/customer-repair-promotion"
+  },
+  "include": [
+    "customer-repair-promotion.test.ts",
+    "../src/canonical/customerRepairPromotion.ts"
+  ]
+}

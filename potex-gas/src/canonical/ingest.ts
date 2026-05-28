@@ -1,10 +1,13 @@
 import { RuntimeConfig } from '../config';
 import { SHEETS } from '../constants';
-import { clearAndRewrite, ensureAuditColumns, openSpreadsheetById, readSheetAsObjects, readSheetAsObjectsOrEmpty } from '../sheets';
+import { clearAndRewrite, ensureAuditColumns, openSpreadsheetById, readSheetAsObjects, readSheetAsObjectsOrEmpty, rewriteObjects } from '../sheets';
+import { nowJstTimestamp } from '../time';
 import {
   buildCommercialOutputs,
   CONTINUATION_EXCEPTION_HEADER,
   CONVERSION_HISTORY_HEADER,
+  CUSTOMER_PLANS_HEADER,
+  MEMBERS_HEADER,
   PAYMENTS_HEADER,
   PLANS_HEADER,
   STAGING_PAYMENTS_HEADER,
@@ -14,6 +17,10 @@ import {
   LINE_REGISTRATIONS_HEADER,
 } from './line';
 import { PARTNER_ASSIGNEES } from '../partners';
+import { applyCustomerRepairNameMatchPromotions } from './customerRepairPromotion';
+import { buildProvisionalMembersFromTemp } from './memberProvisionalPromotion';
+import { buildProvisionalCustomersFromRepairCandidates } from './customerProvisionalPromotion';
+import { buildAssignmentSnapshotRows } from './customerAssignmentSnapshot';
 
 type Stats = {
   sourceCustomerRowsRead: number;
@@ -36,6 +43,12 @@ type Stats = {
   lineRegistrationUnmatchedCount: number;
   continuationExceptionsWritten: number;
   continuationUnmatchedCount: number;
+  customerRepairCandidatesWritten: number;
+  customerRepairPromotionsApplied: number;
+  customerRepairAmbiguousUnresolved: number;
+  provisionalCustomerRowsCreated: number;
+  provisionalMemberSyncRowsWritten: number;
+  provisionalMembersCreated: number;
 };
 
 type LineRegistrationLookup = Map<string, string>;
@@ -67,9 +80,49 @@ const STAGING_CUSTOMER_HEADER = [
   'phone',
   'address',
   'age',
+  'desired_plan_from_form',
   'created_at',
   'updated_at',
 ];
+
+const CUSTOMER_REPAIR_CANDIDATES_TEMP_HEADER = [
+  'source_sheet',
+  'source_row',
+  'customer_name',
+  'match_method',
+  'proposed_action',
+  'matched_customer_id',
+  'matched_customer_name',
+  'coach_name',
+  'course_name',
+  'email_from_form',
+  'phone_from_form',
+  'desired_plan_from_form',
+  'completed_flag',
+  'line_registration_id',
+  'created_at',
+  'updated_at',
+];
+
+const MEMBERS_PROVISIONAL_SYNC_TEMP_HEADER = [
+  'source_sheet',
+  'source_row',
+  'coach_name',
+  'match_status',
+  'proposed_action',
+  'existing_coach_id',
+  'existing_coach_name',
+  'specialty',
+  'coverage_areas',
+  'capacity',
+  'current_load',
+  'remaining_capacity',
+  'buddy',
+  'assigned_customer_count',
+  'note',
+  'created_at',
+  'updated_at',
+] as const;
 
 export const FEEDBACK_HEADER = [
   'feedback_id',
@@ -406,6 +459,31 @@ function readRawValues(ss: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: 
   return sheet.getDataRange().getDisplayValues();
 }
 
+function buildNameBuckets(rows: Array<Record<string, string>>): Map<string, Array<Record<string, string>>> {
+  const buckets = new Map<string, Array<Record<string, string>>>();
+  rows.forEach((row) => {
+    const key = normalizeName(row['customer_name'] || '');
+    if (!key) return;
+    const existing = buckets.get(key) || [];
+    existing.push(row);
+    buckets.set(key, existing);
+  });
+  return buckets;
+}
+
+function buildExistingCoachByName(rows: Array<Record<string, string>>): Map<string, Record<string, string>> {
+  const byName = new Map<string, Record<string, string>>();
+  rows.forEach((row) => {
+    const key = normalizeName(row['coach_name'] || '');
+    if (key && !byName.has(key)) byName.set(key, row);
+  });
+  return byName;
+}
+
+function isCoachListNoise(name: string): boolean {
+  return !name || name.startsWith('※') || ['合計', '副業', '英語', '資格', 'キャリア', '習慣化全般'].includes(name);
+}
+
 function removeColumnIfExists(
   sheet: GoogleAppsScript.Spreadsheet.Sheet | null,
   columnName: string,
@@ -722,6 +800,7 @@ function buildStagingCustomers(
         phone: row['phone'] || '',
         address: '',
         age: '',
+        desired_plan_from_form: row['desired_plan_from_form'] || '',
         updated_at: syncedAt,
       })),
       sourceRowsRead: canonicalRows.length,
@@ -747,6 +826,7 @@ function buildStagingCustomers(
       phone: getByAliases(row, appHeader, ['電話番号']),
       address: getByAliases(row, appHeader, ['住所']),
       age: getByAliases(row, appHeader, ['年齢']),
+      desired_plan: getByAliases(row, appHeader, ['ご希望のプラン']),
     });
   });
 
@@ -796,11 +876,301 @@ function buildStagingCustomers(
       phone: app['phone'] || canonical['phone'] || '',
       address: app['address'] || '',
       age: app['age'] || '',
+      desired_plan_from_form: app['desired_plan'] || '',
       updated_at: syncedAt,
     };
   }).filter((row) => row.customer_name);
 
   return { rows, sourceRowsRead: rows.length, fallbackUsed: false };
+}
+
+function buildCustomerRepairCandidatesTemp(
+  cfg: RuntimeConfig,
+  stagingRows: Array<Record<string, string>>,
+  canonicalRows: Array<Record<string, string>>,
+  syncedAt: string,
+): Array<Record<string, string>> {
+  const canonicalBySourceKey = new Map<string, Record<string, string>>();
+  canonicalRows.forEach((row) => {
+    const sourceKey = `${row['source_sheet'] || ''}::${row['source_row'] || ''}`;
+    if (sourceKey !== '::' && !canonicalBySourceKey.has(sourceKey)) canonicalBySourceKey.set(sourceKey, row);
+  });
+  const canonicalByName = buildNameBuckets(canonicalRows);
+
+  return stagingRows
+    .filter((row) => row['customer_name'])
+    .map((row) => {
+      const sourceSheet = row['source_sheet'] || cfg.sourceCustomersSheetName;
+      const sourceRow = row['source_row'] || '';
+      const sourceKey = `${sourceSheet}::${sourceRow}`;
+      const sourceMatch = canonicalBySourceKey.get(sourceKey);
+      const nameMatches = canonicalByName.get(normalizeName(row['customer_name'] || '')) || [];
+
+      let matchMethod = '';
+      let proposedAction = '';
+      let matchedCustomerId = '';
+      let matchedCustomerName = '';
+
+      if (sourceMatch) {
+        matchMethod = 'source_sheet_row';
+        proposedAction = 'update_existing_from_source_row';
+        matchedCustomerId = sourceMatch['customer_id'] || '';
+        matchedCustomerName = sourceMatch['customer_name'] || '';
+      } else if (nameMatches.length === 1) {
+        matchMethod = 'name_unique';
+        proposedAction = 'update_existing_from_name_match';
+        matchedCustomerId = nameMatches[0]['customer_id'] || '';
+        matchedCustomerName = nameMatches[0]['customer_name'] || '';
+      } else if (nameMatches.length > 1) {
+        matchMethod = 'name_ambiguous';
+        proposedAction = 'review_ambiguous_before_update';
+      } else {
+        matchMethod = 'no_match';
+        proposedAction = 'promote_new_or_attach_by_other_id';
+      }
+
+      return {
+        source_sheet: sourceSheet,
+        source_row: sourceRow,
+        customer_name: row['customer_name'] || '',
+        match_method: matchMethod,
+        proposed_action: proposedAction,
+        matched_customer_id: matchedCustomerId,
+        matched_customer_name: matchedCustomerName,
+        coach_name: row['assigned_coach_name'] || '',
+        course_name: row['course_name'] || '',
+        email_from_form: row['email'] || '',
+        phone_from_form: row['phone'] || '',
+        desired_plan_from_form: row['desired_plan_from_form'] || '',
+        completed_flag: row['program_completed_flag'] || '',
+        line_registration_id: row['line_registration_id'] || '',
+        created_at: row['created_at'] || syncedAt,
+        updated_at: syncedAt,
+      };
+    });
+}
+
+function buildMembersProvisionalSyncTemp(
+  cfg: RuntimeConfig,
+  memberRows: Array<Record<string, string>>,
+  stagingRows: Array<Record<string, string>>,
+  syncedAt: string,
+): Array<Record<string, string>> {
+  if (!cfg.sourceCustomersWorkbookId) return [];
+  const source = openSpreadsheetById(cfg.sourceCustomersWorkbookId);
+  const coachValues = readRawValues(source, '委託コーチ一覧');
+  if (!coachValues.length) return [];
+
+  const header = headerLookup(coachValues[0]);
+  const existingCoachByName = buildExistingCoachByName(memberRows);
+  const assignedCoachCounter = new Map<string, number>();
+  stagingRows.forEach((row) => {
+    const coachName = row['assigned_coach_name'] || '';
+    if (!coachName) return;
+    const key = normalizeName(coachName);
+    assignedCoachCounter.set(key, (assignedCoachCounter.get(key) || 0) + 1);
+  });
+
+  const rows: Array<Record<string, string>> = [];
+  const seenKeys = new Set<string>();
+
+  coachValues.slice(1).forEach((rawRow, idx) => {
+    const coachName = getByAliases(rawRow, header, ['コーチ名']);
+    if (isCoachListNoise(coachName)) return;
+    const key = normalizeName(coachName);
+    if (!key || seenKeys.has(key)) return;
+    seenKeys.add(key);
+    const existing = existingCoachByName.get(key);
+    const assignedCount = String(assignedCoachCounter.get(key) || 0);
+    rows.push({
+      source_sheet: '委託コーチ一覧',
+      source_row: String(idx + 2),
+      coach_name: coachName,
+      match_status: existing ? 'existing_member' : 'missing_member',
+      proposed_action: existing ? 'keep_existing_member' : 'create_provisional_member',
+      existing_coach_id: existing?.['coach_id'] || '',
+      existing_coach_name: existing?.['coach_name'] || '',
+      specialty: getByAliases(rawRow, header, ['特性（専門領域）']),
+      coverage_areas: getByAliases(rawRow, header, ['特性（対応可能領域）']),
+      capacity: getByAliases(rawRow, header, ['担当可能人数']),
+      current_load: getByAliases(rawRow, header, ['現在担当人数']),
+      remaining_capacity: getByAliases(rawRow, header, ['残対応可能枠']),
+      buddy: getByAliases(rawRow, header, ['バディ']),
+      assigned_customer_count: assignedCount,
+      note: assignedCount !== '0' ? 'assigned_in_customer_source' : 'source_only',
+      created_at: syncedAt,
+      updated_at: syncedAt,
+    });
+  });
+
+  assignedCoachCounter.forEach((count, key) => {
+    if (seenKeys.has(key)) return;
+    const coachName = stagingRows.find((row) => normalizeName(row['assigned_coach_name'] || '') === key)?.['assigned_coach_name'] || key;
+    const existing = existingCoachByName.get(key);
+    rows.push({
+      source_sheet: cfg.sourceCustomersSheetName,
+      source_row: '',
+      coach_name: coachName,
+      match_status: existing ? 'existing_member' : 'missing_from_member_and_coach_source',
+      proposed_action: existing ? 'keep_existing_member' : 'create_provisional_member_from_assigned_customer',
+      existing_coach_id: existing?.['coach_id'] || '',
+      existing_coach_name: existing?.['coach_name'] || '',
+      specialty: '',
+      coverage_areas: '',
+      capacity: '',
+      current_load: '',
+      remaining_capacity: '',
+      buddy: '',
+      assigned_customer_count: String(count),
+      note: 'assigned_in_customer_source_only',
+      created_at: syncedAt,
+      updated_at: syncedAt,
+    });
+  });
+
+  return rows.sort((a, b) => {
+    const aMissing = a['proposed_action'].includes('create_provisional') ? 0 : 1;
+    const bMissing = b['proposed_action'].includes('create_provisional') ? 0 : 1;
+    if (aMissing !== bMissing) return aMissing - bMissing;
+    return (b['assigned_customer_count'] || '').localeCompare(a['assigned_customer_count'] || '') || (a['coach_name'] || '').localeCompare(b['coach_name'] || '');
+  });
+}
+
+function applyCustomerRepairNameMatchPromotionsToSheet(
+  db: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  stagingRows: Array<Record<string, string>>,
+  candidateRows: Array<Record<string, string>>,
+  syncedAt: string,
+  activityByCustomerId: Record<string, { planCount?: number; paymentCount?: number; feedbackCount?: number; channelLinkCount?: number; conversionCount?: number }>,
+): { appliedCount: number; unresolvedAmbiguousCount: number } {
+  const sheet = db.getSheetByName(SHEETS.CUSTOMERS);
+  if (!sheet) return { appliedCount: 0, unresolvedAmbiguousCount: 0 };
+
+  ensureColumns(sheet, [
+    'source_sheet',
+    'source_row',
+    'desired_plan_from_form',
+    'matching_contact_date',
+    'program_completed_flag',
+    'app_status',
+  ]);
+
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) return { appliedCount: 0, unresolvedAmbiguousCount: 0 };
+  const header = (values[0] || []).map(String);
+  const rows = values.slice(1).map((row) => header.reduce<Record<string, string>>((acc, key, idx) => {
+    acc[key] = String(row[idx] || '');
+    return acc;
+  }, {}));
+
+  const result = applyCustomerRepairNameMatchPromotions({
+    customers: rows,
+    stagingRows,
+    candidates: candidateRows,
+    syncedAt,
+    activityByCustomerId,
+  });
+  if (result.appliedCount === 0) {
+    return {
+      appliedCount: 0,
+      unresolvedAmbiguousCount: result.unresolvedAmbiguousCount,
+    };
+  }
+
+  result.customers.forEach((nextRow, rowIndex) => {
+    const currentRow = rows[rowIndex] || {};
+    const changed = header.some((columnName) => (nextRow[columnName] || '') !== (currentRow[columnName] || ''));
+    if (!changed) return;
+    const rowValues = header.map((columnName) => nextRow[columnName] || '');
+    sheet.getRange(rowIndex + 2, 1, 1, header.length).setValues([rowValues]);
+  });
+
+  return {
+    appliedCount: result.appliedCount,
+    unresolvedAmbiguousCount: result.unresolvedAmbiguousCount,
+  };
+}
+
+function buildCustomerActivityByCustomerId(
+  db: GoogleAppsScript.Spreadsheet.Spreadsheet,
+): Record<string, { planCount?: number; paymentCount?: number; feedbackCount?: number; channelLinkCount?: number; conversionCount?: number }> {
+  const activityByCustomerId: Record<string, { planCount?: number; paymentCount?: number; feedbackCount?: number; channelLinkCount?: number; conversionCount?: number }> = {};
+  const increment = (customerId: string, field: 'planCount' | 'paymentCount' | 'feedbackCount' | 'channelLinkCount' | 'conversionCount') => {
+    if (!customerId) return;
+    const existing = activityByCustomerId[customerId] || {};
+    existing[field] = (existing[field] || 0) + 1;
+    activityByCustomerId[customerId] = existing;
+  };
+
+  readSheetAsObjectsOrEmpty(db, SHEETS.CUSTOMER_PLANS).forEach((row) => increment(row['customer_id'] || '', 'planCount'));
+  readSheetAsObjectsOrEmpty(db, SHEETS.PAYMENTS).forEach((row) => increment(row['customer_id'] || '', 'paymentCount'));
+  readSheetAsObjectsOrEmpty(db, SHEETS.FEEDBACK).forEach((row) => increment(row['customer_id'] || '', 'feedbackCount'));
+  readSheetAsObjectsOrEmpty(db, SHEETS.CUSTOMER_CHANNEL_LINKS).forEach((row) => increment(row['customer_id'] || '', 'channelLinkCount'));
+  readSheetAsObjectsOrEmpty(db, SHEETS.CONVERSION_HISTORY).forEach((row) => increment(row['customer_id'] || '', 'conversionCount'));
+
+  return activityByCustomerId;
+}
+
+function applyProvisionalCustomersToSheet(
+  db: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  stagingRows: Array<Record<string, string>>,
+  candidateRows: Array<Record<string, string>>,
+  syncedAt: string,
+): number {
+  const sheet = db.getSheetByName(SHEETS.CUSTOMERS);
+  if (!sheet) return 0;
+  ensureColumns(sheet, [
+    'source_sheet',
+    'source_row',
+    'desired_plan_from_form',
+    'matching_contact_date',
+    'program_completed_flag',
+    'app_status',
+  ]);
+
+  const values = sheet.getDataRange().getValues();
+  if (!values.length) return 0;
+  const header = (values[0] || []).map(String);
+  const rows = values.slice(1).map((row) => header.reduce<Record<string, string>>((acc, key, idx) => {
+    acc[key] = String(row[idx] || '');
+    return acc;
+  }, {}));
+
+  const result = buildProvisionalCustomersFromRepairCandidates({
+    existingCustomers: rows,
+    stagingRows,
+    candidates: candidateRows,
+    syncedAt,
+  });
+  if (result.created.length === 0) return 0;
+
+  const startRow = sheet.getLastRow() + 1;
+  const out = result.created.map((row) => header.map((key) => row[key] || ''));
+  sheet.getRange(startRow, 1, out.length, header.length).setValues(out);
+  return result.created.length;
+}
+
+function applyProvisionalMembersToSheet(
+  db: GoogleAppsScript.Spreadsheet.Spreadsheet,
+  memberRows: Array<Record<string, string>>,
+  provisionalRows: Array<Record<string, string>>,
+  syncedAt: string,
+): number {
+  const sheet = db.getSheetByName(SHEETS.MEMBERS);
+  if (!sheet) return 0;
+  ensureColumns(sheet, MEMBERS_HEADER as unknown as string[]);
+
+  const result = buildProvisionalMembersFromTemp({
+    existingMembers: memberRows,
+    tempRows: provisionalRows,
+    syncedAt,
+  });
+  if (result.created.length === 0) return 0;
+
+  const startRow = sheet.getLastRow() + 1;
+  const values = result.created.map((row) => MEMBERS_HEADER.map((key) => row[key] || ''));
+  sheet.getRange(startRow, 1, values.length, MEMBERS_HEADER.length).setValues(values);
+  return result.created.length;
 }
 
 function buildFeedbackResponses(
@@ -1012,13 +1382,27 @@ export function refreshCanonicalStaging(cfg: RuntimeConfig): Stats {
   const coachAliasRows = readSheetAsObjects(db, 'Coach_Alias_Map');
   const coachLookup = buildCoachAliasLookup(coachRows, coachAliasRows);
   const existingAssignmentRows = readSheetAsObjectsOrEmpty(db, SHEETS.CUSTOMER_COACH_ASSIGNMENTS);
+  const customerActivityByCustomerId = buildCustomerActivityByCustomerId(db);
   const lineOutputs = buildLineRegistrationOutputs(cfg, syncedAt);
   const lineRegistrationLookup = buildLineRegistrationLookup(lineOutputs.lineRegistrations);
   const stagingCustomers = buildStagingCustomers(cfg, lineRegistrationLookup, syncedAt);
-  const customerCoachAssignments = buildCustomerCoachAssignments(stagingCustomers.rows, coachLookup, existingAssignmentRows, syncedAt);
+  const customerRepairCandidates = buildCustomerRepairCandidatesTemp(cfg, stagingCustomers.rows, customerRows, syncedAt);
+  const customerRepairPromotionResult = applyCustomerRepairNameMatchPromotionsToSheet(db, stagingCustomers.rows, customerRepairCandidates, syncedAt, customerActivityByCustomerId);
+  const provisionalCustomerRowsCreated = applyProvisionalCustomersToSheet(db, stagingCustomers.rows, customerRepairCandidates, syncedAt);
+  const refreshedCustomerRows = (customerRepairPromotionResult.appliedCount > 0 || provisionalCustomerRowsCreated > 0)
+    ? readSheetAsObjects(db, SHEETS.CUSTOMERS)
+    : customerRows;
+  const assignmentSnapshotRows = buildAssignmentSnapshotRows(stagingCustomers.rows, refreshedCustomerRows);
+  const provisionalMemberSyncRows = buildMembersProvisionalSyncTemp(cfg, coachRows, stagingCustomers.rows, syncedAt);
+  const provisionalMembersCreated = applyProvisionalMembersToSheet(db, coachRows, provisionalMemberSyncRows, syncedAt);
+  const refreshedCoachRows = provisionalMembersCreated > 0
+    ? readSheetAsObjects(db, SHEETS.MEMBERS)
+    : coachRows;
+  const refreshedCoachLookup = buildCoachAliasLookup(refreshedCoachRows, coachAliasRows);
+  const customerCoachAssignments = buildCustomerCoachAssignments(assignmentSnapshotRows, refreshedCoachLookup, existingAssignmentRows, syncedAt);
   const customerChannelLinks = buildCustomerChannelLinks(lineOutputs.lineRegistrations, syncedAt);
   const feedbackResponses = buildFeedbackResponses(cfg, syncedAt);
-  const outputs = buildFeedbackOutputs(feedbackResponses.rows, customerRows, coachRows, syncedAt);
+  const outputs = buildFeedbackOutputs(feedbackResponses.rows, refreshedCustomerRows, refreshedCoachRows, syncedAt);
   const commercial = buildCommercialOutputs(
     cfg,
     lineOutputs.lineRegistrationEvents.map((event) => ({
@@ -1034,6 +1418,8 @@ export function refreshCanonicalStaging(cfg: RuntimeConfig): Stats {
     STAGING_CUSTOMER_HEADER,
     ...stagingCustomers.rows.map((row) => STAGING_CUSTOMER_HEADER.map((key) => row[key] || '')),
   ]);
+  rewriteObjects(db, SHEETS.CUSTOMER_REPAIR_CANDIDATES_TEMP, CUSTOMER_REPAIR_CANDIDATES_TEMP_HEADER, customerRepairCandidates);
+  rewriteObjects(db, SHEETS.MEMBERS_PROVISIONAL_SYNC_TEMP, MEMBERS_PROVISIONAL_SYNC_TEMP_HEADER as unknown as string[], provisionalMemberSyncRows);
   clearAndRewrite(db, SHEETS.STAGING_PAYMENTS, [
     STAGING_PAYMENTS_HEADER as unknown as string[],
     ...commercial.stagingPayments.map((row) => STAGING_PAYMENTS_HEADER.map((key) => row[key] || '')),
@@ -1099,5 +1485,11 @@ export function refreshCanonicalStaging(cfg: RuntimeConfig): Stats {
     lineRegistrationUnmatchedCount: lineOutputs.lineRegistrationUnmatchedCount,
     continuationExceptionsWritten: commercial.continuationExceptions.length,
     continuationUnmatchedCount: commercial.continuationUnmatchedCount,
+    customerRepairCandidatesWritten: customerRepairCandidates.length,
+    customerRepairPromotionsApplied: customerRepairPromotionResult.appliedCount,
+    customerRepairAmbiguousUnresolved: customerRepairPromotionResult.unresolvedAmbiguousCount,
+    provisionalCustomerRowsCreated,
+    provisionalMemberSyncRowsWritten: provisionalMemberSyncRows.length,
+    provisionalMembersCreated,
   };
 }

@@ -1,6 +1,8 @@
 export const SHEETS = {
   STAGING_CUSTOMERS: 'Staging_Customers',
   STAGING_PAYMENTS: 'Staging_Payments',
+  CUSTOMER_REPAIR_CANDIDATES_TEMP: 'Customer_Repair_Candidates_Temp',
+  MEMBERS_PROVISIONAL_SYNC_TEMP: 'Members_Provisional_Sync_Temp',
   IMPORT_CSV_D: 'Import_csvD',
   LINE_REGISTRATIONS: 'Line_Registrations',
   CUSTOMERS: 'Customers',
@@ -19,6 +21,11 @@ export const SHEETS = {
   EXCEPTIONS_FEEDBACK_MATCH: 'Exceptions_FeedbackMatch',
   EXCEPTIONS_CONTINUATION_MATCH: 'Exceptions_ContinuationMatch',
   SYNC_LOG: 'Sync_Log',
+} as const;
+
+export const LINE_REGISTRATION_SOURCE_HINTS = {
+  CSV_D: 'csvd',
+  CSV_POTEX: 'csvpotex',
 } as const;
 
 export const PROPS = {

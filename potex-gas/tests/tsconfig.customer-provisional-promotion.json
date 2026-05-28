@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "../tests-dist/customer-provisional-promotion"
+  },
+  "include": [
+    "customer-provisional-promotion.test.ts",
+    "../src/canonical/customerProvisionalPromotion.ts"
+  ]
+}
