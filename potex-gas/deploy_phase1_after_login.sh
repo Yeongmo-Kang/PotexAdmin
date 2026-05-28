@@ -50,6 +50,12 @@ echo "Pushing build output to Apps Script..."
 npm run deploy
 
 echo
+echo "Execution API quick check:"
+echo "  cd $SCRIPT_DIR && npm run exec:check"
+echo "If HEAD/devMode is healthy, you can smoke-test with:"
+echo "  cd $SCRIPT_DIR && npm run run:head -- validateEnvironment"
+echo "  cd $SCRIPT_DIR && npm run run:head -- runPublishCustomerV2"
+echo
 if [[ -f "$PROPS_JSON" ]]; then
   echo "Next manual step: paste Script Properties from:"
   echo "  $PROPS_JSON"

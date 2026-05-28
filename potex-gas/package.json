@@ -9,7 +9,11 @@
     "pull": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp pull -A $HOME/.clasprc.json",
     "deploy": "npm run build && PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp push -f -A $HOME/.clasprc.json",
     "open": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp open -A $HOME/.clasprc.json",
-    "logs": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp logs --watch -A $HOME/.clasprc.json"
+    "logs": "PATH=/home/ubuntu/.hermes/node/bin:$PATH clasp logs --watch -A $HOME/.clasprc.json",
+    "exec:check": "node ./scripts/apps-script-api.mjs check",
+    "run:head": "node ./scripts/apps-script-api.mjs run --head",
+    "run:deployed": "node ./scripts/apps-script-api.mjs run --deployed",
+    "login:project-scopes": "./scripts/login-project-scopes.sh"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2",
