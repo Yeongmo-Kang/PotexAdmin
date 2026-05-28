@@ -189,6 +189,24 @@ export function dropOrphanStagingFeedback(): void {
   dropSheetAndLog('dropOrphanStagingFeedback', 'Staging_Feedback');
 }
 
+export function runImportCsvPotex(): void {
+  withScriptLock('runImportCsvPotex', () => {
+    appendSyncLog('runImportCsvPotex', 'no_op', {
+      reason: 'disabled_use_runCanonicalRefresh',
+      detail: 'Import_csvPotex is consumed by the canonical refresh path; the standalone importer used a legacy segment/id convention and can duplicate rows.',
+    });
+    try {
+      SpreadsheetApp.getUi().alert(
+        'csvPotex取込（停止中）',
+        'csvPotex は現在 DB更新（正本/ステージング）/ 全体更新 の中で処理します。重複行を避けるため、この個別取込は停止しています。',
+        SpreadsheetApp.getUi().ButtonSet.OK,
+      );
+    } catch (error) {
+      // UI may be unavailable when triggered from headless context
+    }
+  });
+}
+
 export function provisionPartnerWorkbooks(): void {
   const props = PropertiesService.getScriptProperties();
   const existingInaiId = props.getProperty(PROPS.INAI_SPREADSHEET_ID) || '';

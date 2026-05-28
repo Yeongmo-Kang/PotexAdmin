@@ -25,7 +25,7 @@ export function onOpen(): void {
       SpreadsheetApp.getUi()
         .createMenu('顧客DB (v2)')
         .addItem('csvD取込', 'menuRunImportCsvD')
-        .addItem('v2書戻し', 'menuRunWritebackCustomerV2')
+        .addItem('v2書戻し（準備中）', 'menuRunWritebackCustomerV2')
         .addItem('v2公開', 'menuRunPublishCustomerV2'),
     )
     .addSeparator()
