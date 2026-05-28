@@ -11,6 +11,7 @@ const defaultAuthFile = process.env.CLASP_AUTH_FILE || `${process.env.HOME}/.cla
 const tokenEndpoint = 'https://oauth2.googleapis.com/token';
 const tokenInfoEndpoint = 'https://oauth2.googleapis.com/tokeninfo';
 const scriptRunBase = 'https://script.googleapis.com/v1/scripts';
+const deploymentsBase = 'https://script.googleapis.com/v1/projects';
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -130,10 +131,43 @@ async function loadAuth(authFile) {
   };
 }
 
-async function runScriptFunction({ scriptId, accessToken, functionName, params, mode }) {
-  const devMode = mode === 'head';
+function isExecutionApiDeployment(deployment) {
+  return Array.isArray(deployment?.entryPoints)
+    && deployment.entryPoints.some((entryPoint) => entryPoint?.entryPointType === 'EXECUTION_API');
+}
+
+function compareDeployments(a, b) {
+  const aVersion = a?.deploymentConfig?.versionNumber ?? -1;
+  const bVersion = b?.deploymentConfig?.versionNumber ?? -1;
+  if (aVersion !== bVersion) return bVersion - aVersion;
+  const aTime = Date.parse(a?.updateTime || '1970-01-01T00:00:00Z');
+  const bTime = Date.parse(b?.updateTime || '1970-01-01T00:00:00Z');
+  return bTime - aTime;
+}
+
+async function listDeployments({ scriptId, accessToken }) {
+  const response = await getJson(`${deploymentsBase}/${scriptId}/deployments`, {
+    authorization: `Bearer ${accessToken}`,
+  });
+  if (!response.ok) {
+    const err = response?.data?.error || {};
+    throw new Error(`Failed to list deployments (${response.status}): ${err.message || JSON.stringify(response.data)}`);
+  }
+  return Array.isArray(response.data?.deployments) ? response.data.deployments : [];
+}
+
+function selectDeployment(deployments) {
+  const candidates = deployments
+    .filter(isExecutionApiDeployment)
+    .filter((deployment) => Number.isFinite(deployment?.deploymentConfig?.versionNumber));
+  if (candidates.length === 0) return null;
+  candidates.sort(compareDeployments);
+  return candidates[0];
+}
+
+async function runScriptFunction({ targetId, accessToken, functionName, params, devMode }) {
   const response = await postJson(
-    `${scriptRunBase}/${scriptId}:run`,
+    `${scriptRunBase}/${targetId}:run`,
     {
       function: functionName,
       parameters: params,
@@ -142,7 +176,7 @@ async function runScriptFunction({ scriptId, accessToken, functionName, params, 
     { authorization: `Bearer ${accessToken}` },
   );
 
-  return { ...response, devMode };
+  return { ...response, devMode, targetId };
 }
 
 function summarizeRemoteError(response) {
@@ -158,7 +192,7 @@ function summarizeRemoteError(response) {
   };
 }
 
-function buildDiagnosis({ mode, missingScopes, remoteError }) {
+function buildDiagnosis({ mode, missingScopes, remoteError, selectedDeployment }) {
   const lines = [];
   if (missingScopes.length > 0) {
     lines.push(
@@ -174,9 +208,20 @@ function buildDiagnosis({ mode, missingScopes, remoteError }) {
     );
   }
 
-  if (remoteError?.code === 404 && mode === 'deployed') {
+  if (remoteError?.code === 404 && mode === 'deployed-raw') {
+    if (selectedDeployment?.deploymentId) {
+      lines.push(
+        'Raw scriptId nondev resolution failed, but this repo should prefer the explicit deployment-ID route.',
+        `Selected deployment: ${selectedDeployment.deploymentId} (version ${selectedDeployment.deploymentConfig?.versionNumber ?? 'unknown'})`,
+      );
+    } else {
+      lines.push('Raw scriptId nondev resolution failed and no versioned EXECUTION_API deployment was found.');
+    }
+  }
+
+  if (remoteError?.code === 404 && mode === 'deployed-explicit') {
     lines.push(
-      'Deployed/nondev execution is not resolving to an API executable deployment. Check the script\'s linked GCP project, API Executable deployment, and clasp projectId linkage.',
+      'Explicit deployment-ID execution failed. Check the deployment metadata, linked GCP project, and whether the selected deployment is still API executable.',
     );
   }
 
@@ -186,6 +231,13 @@ function buildDiagnosis({ mode, missingScopes, remoteError }) {
   return lines;
 }
 
+function labelForMode(mode) {
+  if (mode === 'head') return 'HEAD/devMode';
+  if (mode === 'deployed-explicit') return 'deployed/nondev via explicit deploymentId';
+  if (mode === 'deployed-raw') return 'deployed/nondev via raw scriptId';
+  return mode;
+}
+
 function printHumanCheck(summary) {
   console.log(`Script ID: ${summary.scriptId}`);
   console.log(`Auth file: ${summary.authFile}`);
@@ -193,6 +245,11 @@ function printHumanCheck(summary) {
   console.log(`Check function: ${summary.functionName}`);
   console.log(`Manifest scopes: ${summary.manifestScopes.length}`);
   console.log(`Token scopes: ${summary.tokenScopes.length}`);
+  if (summary.selectedDeployment) {
+    console.log(`Selected deployment: ${summary.selectedDeployment.deploymentId} @${summary.selectedDeployment.deploymentConfig?.versionNumber ?? 'HEAD'}${summary.selectedDeployment.deploymentConfig?.description ? ` - ${summary.selectedDeployment.deploymentConfig.description}` : ''}`);
+  } else {
+    console.log('Selected deployment: none');
+  }
   if (summary.missingScopes.length > 0) {
     console.log('Missing token scopes:');
     for (const scope of summary.missingScopes) {
@@ -203,8 +260,7 @@ function printHumanCheck(summary) {
   }
 
   for (const attempt of summary.attempts) {
-    const label = attempt.mode === 'head' ? 'HEAD/devMode' : 'deployed/nondev';
-    console.log(`\n[${label}]`);
+    console.log(`\n[${labelForMode(attempt.mode)}]`);
     if (attempt.ok) {
       console.log('status: OK');
       console.log(JSON.stringify(attempt.data.response?.result ?? attempt.data, null, 2));
@@ -225,26 +281,52 @@ async function main() {
   const manifestScopes = Array.isArray(manifest.oauthScopes) ? manifest.oauthScopes : [];
   const auth = await loadAuth(options.authFile);
   const missingScopes = manifestScopes.filter((scope) => !auth.tokenScopes.includes(scope));
+  const deployments = await listDeployments({ scriptId: clasp.scriptId, accessToken: auth.accessToken });
+  const selectedDeployment = selectDeployment(deployments);
 
   if (command === 'check') {
     const attempts = [];
-    for (const mode of ['head', 'deployed']) {
+    const probes = [
+      { mode: 'head', targetId: clasp.scriptId, devMode: true },
+      { mode: 'deployed-explicit', targetId: selectedDeployment?.deploymentId, devMode: false, skipIfMissing: true },
+      { mode: 'deployed-raw', targetId: clasp.scriptId, devMode: false },
+    ];
+
+    for (const probe of probes) {
+      if (probe.skipIfMissing && !probe.targetId) {
+        attempts.push({
+          mode: probe.mode,
+          ok: false,
+          error: {
+            code: 0,
+            status: 'NO_DEPLOYMENT',
+            message: 'No versioned EXECUTION_API deployment found.',
+            scriptErrorMessage: null,
+            scriptErrorType: null,
+            scriptStackTrace: [],
+          },
+          diagnosis: ['Create or select a versioned EXECUTION_API deployment before using deployed/nondev execution.'],
+        });
+        continue;
+      }
+
       const response = await runScriptFunction({
-        scriptId: clasp.scriptId,
+        targetId: probe.targetId,
         accessToken: auth.accessToken,
         functionName: options.functionName,
         params: [],
-        mode,
+        devMode: probe.devMode,
       });
       if (response.ok) {
-        attempts.push({ mode, ok: true, data: response });
+        attempts.push({ mode: probe.mode, ok: true, data: response, targetId: probe.targetId });
       } else {
         const error = summarizeRemoteError(response);
         attempts.push({
-          mode,
+          mode: probe.mode,
           ok: false,
           error,
-          diagnosis: buildDiagnosis({ mode, missingScopes, remoteError: error }),
+          targetId: probe.targetId,
+          diagnosis: buildDiagnosis({ mode: probe.mode, missingScopes, remoteError: error, selectedDeployment }),
         });
       }
     }
@@ -257,6 +339,11 @@ async function main() {
       manifestScopes,
       tokenScopes: auth.tokenScopes,
       missingScopes,
+      selectedDeployment: selectedDeployment ? {
+        deploymentId: selectedDeployment.deploymentId,
+        deploymentConfig: selectedDeployment.deploymentConfig,
+        updateTime: selectedDeployment.updateTime,
+      } : null,
       attempts,
     };
 
@@ -266,22 +353,36 @@ async function main() {
       printHumanCheck(summary);
     }
 
-    const allOk = attempts.every((attempt) => attempt.ok);
+    const durableModes = attempts.filter((attempt) => ['head', 'deployed-explicit'].includes(attempt.mode));
+    const allOk = durableModes.length > 0 && durableModes.every((attempt) => attempt.ok);
     process.exit(allOk ? 0 : 1);
   }
 
+  const targetId = options.mode === 'deployed'
+    ? selectedDeployment?.deploymentId
+    : clasp.scriptId;
+  if (!targetId) {
+    throw new Error('No versioned EXECUTION_API deployment found for --deployed run.');
+  }
+
   const response = await runScriptFunction({
-    scriptId: clasp.scriptId,
+    targetId,
     accessToken: auth.accessToken,
     functionName: options.functionName,
     params: options.params,
-    mode: options.mode,
+    devMode: options.mode === 'head',
   });
 
   if (response.ok) {
     const result = {
       mode: options.mode,
       functionName: options.functionName,
+      targetId,
+      selectedDeployment: options.mode === 'deployed' && selectedDeployment ? {
+        deploymentId: selectedDeployment.deploymentId,
+        versionNumber: selectedDeployment.deploymentConfig?.versionNumber ?? null,
+        description: selectedDeployment.deploymentConfig?.description ?? null,
+      } : null,
       result: response.data.response?.result ?? null,
     };
     console.log(JSON.stringify(result, null, 2));
@@ -292,9 +393,20 @@ async function main() {
   const failure = {
     mode: options.mode,
     functionName: options.functionName,
+    targetId,
+    selectedDeployment: selectedDeployment ? {
+      deploymentId: selectedDeployment.deploymentId,
+      versionNumber: selectedDeployment.deploymentConfig?.versionNumber ?? null,
+      description: selectedDeployment.deploymentConfig?.description ?? null,
+    } : null,
     missingScopes,
     error: remoteError,
-    diagnosis: buildDiagnosis({ mode: options.mode, missingScopes, remoteError }),
+    diagnosis: buildDiagnosis({
+      mode: options.mode === 'deployed' ? 'deployed-explicit' : options.mode,
+      missingScopes,
+      remoteError,
+      selectedDeployment,
+    }),
   };
   console.error(JSON.stringify(failure, null, 2));
   process.exit(1);

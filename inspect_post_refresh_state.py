@@ -74,7 +74,19 @@ def health_summary(service, spreadsheet_id: str, tab_name: str) -> Dict[str, Any
         rows = read_values(service, spreadsheet_id, f"'{tab_name}'!A:Z")
     except HttpError as exc:
         return {"present": False, "error": str(exc)}
-    dicts = table_to_dicts(rows)
+    if not rows:
+        return {"present": True, "row_count": 0, "header": [], "metrics": {}}
+
+    header_index = 0
+    if len(rows) >= 2:
+        first = rows[0]
+        second = rows[1]
+        if "metric" not in first and {"metric", "value", "note"}.issubset(set(second)):
+            header_index = 1
+
+    header = rows[header_index]
+    body_rows = [header] + rows[header_index + 1 :]
+    dicts = table_to_dicts(body_rows)
     by_metric = {row.get("metric", ""): row for row in dicts}
     metrics = {
         metric: {
@@ -86,8 +98,9 @@ def health_summary(service, spreadsheet_id: str, tab_name: str) -> Dict[str, Any
     }
     return {
         "present": True,
-        "row_count": max(0, len(rows) - 1),
-        "header": rows[0] if rows else [],
+        "row_count": max(0, len(body_rows) - 1),
+        "header": header,
+        "display_header": rows[0] if rows else [],
         "metrics": metrics,
     }
 
